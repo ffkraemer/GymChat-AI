@@ -38,10 +38,7 @@ O GymChat AI é uma plataforma de relacionamento e fidelização para ginásios 
 ## Ligações Rápidas
 
 - [Visão do Produto](product-vision.md)
-- [Requisitos de Negócio](business-requirements.md)
 - [Arquitetura da Solução](solution-architecture.md)
-- [Arquitetura de I.A](ai-architecture.md)
-- [Motor de Fidelização](loyalty-engine.md)
-- [Integração com WhatsApp](whatsapp-integration.md)
-- [Deployment](deployment.md)
 - [Roadmap](roadmap.md)
+- [Domain Model](domain-model.md)
+- [Backlog do Produto](product-backlog.md)
