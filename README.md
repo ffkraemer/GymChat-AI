@@ -1,8 +1,10 @@
 # GymChat AI
 
-> AI-Powered Customer Engagement & Loyalty Platform for Gyms
+AI-Powered Customer Engagement & Loyalty Platform for Gyms
 
-## 🌍 Available Documentation
+GymChat AI is an Artificial Intelligence platform powered by WhatsApp, designed to help gyms improve member engagement, increase retention, and automate communication through intelligent loyalty journeys.
+
+O GymChat AI é uma plataforma de Inteligência Artificial baseada em WhatsApp concebida para ajudar ginásios a melhorar o relacionamento com os seus membros, aumentar a retenção e automatizar processos de comunicação através de jornadas de fidelização inteligentes.
 
 ### 🇬🇧 English Documentation
 
@@ -13,13 +15,10 @@
 Main Documents:
 
 - Product Vision
-- Business Requirements
-- Solution Architecture
-- AI Architecture
-- Loyalty Engine
-- WhatsApp Integration
-- Deployment Guide
+- Product Backlog
 - Roadmap
+- Domain Model
+- Solution Architecture
 
 ---
 
@@ -32,13 +31,10 @@ Main Documents:
 Documentos Principais:
 
 - Visão do Produto
-- Requisitos de Negócio
-- Arquitetura da Solução
-- Arquitetura de IA
-- Motor de Fidelização
-- Integração WhatsApp
-- Guia de Deployment
+- Backlog do Produto
 - Roadmap
+- Modelo de Domínio
+- Arquitetura da Solução
 
 ---
 
