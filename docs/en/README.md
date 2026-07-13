@@ -13,15 +13,13 @@ GymChat AI is an AI-powered customer engagement and loyalty platform for gyms, b
 ### Product
 
 - Product Vision
-- Business Requirements
+- Product Backlog
 - Roadmap
 
 ### Architecture
 
-- Solution Architecture
-- C4 Model
 - Domain Model
-- AI Architecture
+- Solution Architecture
 
 ### Integrations
 
@@ -38,7 +36,7 @@ GymChat AI is an AI-powered customer engagement and loyalty platform for gyms, b
 ## Quick Links
 
 - [Product Vision](product-vision.md)
-- [Solution Architecture](solution-architecture.md)
+- [Product Backlog](product-backlog.md)
 - [Roadmap](roadmap.md)
 - [Domain Model](domain-model.md)
-- [Product Backlog](product-backlog.md)
+- [Solution Architecture](solution-architecture.md)
