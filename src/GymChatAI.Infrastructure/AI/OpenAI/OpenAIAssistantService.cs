@@ -14,9 +14,9 @@ public class OpenAIAssistantService : IAIAssistantService
 
     private readonly HttpClient _httpClient;
     private readonly ILogger<OpenAIAssistantService> _logger;
-    private readonly OpenAiOptions _options;
+    private readonly OpenAIOptions _options;
 
-    public OpenAIAssistantService(HttpClient httpClient, IOptions<OpenAiOptions> options, ILogger<OpenAIAssistantService> logger)
+    public OpenAIAssistantService(HttpClient httpClient, IOptions<OpenAIOptions> options, ILogger<OpenAIAssistantService> logger)
     {
         _httpClient = httpClient;
         _options = options.Value;

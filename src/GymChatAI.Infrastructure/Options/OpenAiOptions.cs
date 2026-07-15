@@ -1,6 +1,6 @@
 ﻿namespace GymChatAI.Infrastructure.Options;
 
-public class OpenAiOptions
+public class OpenAIOptions
 {
     public const string SectionName = "OpenAI";
 
