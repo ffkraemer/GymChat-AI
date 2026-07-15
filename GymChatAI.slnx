@@ -3,5 +3,4 @@
   <Project Path="src/GymChatAI.Application/GymChatAI.Application.csproj" />
   <Project Path="src/GymChatAI.Domain/GymChatAI.Domain.csproj" />
   <Project Path="src/GymChatAI.Infrastructure/GymChatAI.Infrastructure.csproj" />
-  <Project Path="src/GymChatAI.Shared/GymChatAI.Shared.csproj" />
 </Solution>

@@ -1,23 +1,32 @@
+using GymChatAI.Api.Endpoints;
+using GymChatAI.Infrastructure.DependencyInjection;
+using GymChatAI.Infrastructure.Options;
+using GymChatAI.Infrastructure.Persistence;
+using Microsoft.Extensions.Options;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-
-builder.Services.AddControllers();
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-builder.Services.AddOpenApi();
+builder.Services.AddGymChatInfrastructure(builder.Configuration);
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
+// Seed a demo gym + starter FAQ knowledge base so the POC can be exercised immediately.
+using (var scope = app.Services.CreateScope())
 {
-    app.MapOpenApi();
+    var store = scope.ServiceProvider.GetRequiredService<InMemoryDataStore>();
+    var whatsAppOptions = scope.ServiceProvider.GetRequiredService<IOptions<WhatsAppOptions>>();
+    DemoDataSeeder.Seed(store, whatsAppOptions);
 }
 
-app.UseHttpsRedirection();
+app.MapGet("/health", () => Results.Ok(new { status = "healthy" })).WithTags("Health");
 
-app.UseAuthorization();
-
-app.MapControllers();
+app.MapWhatsAppWebhookEndpoints();
+app.MapFaqEndpoints();
+app.MapConversationEndpoints();
+app.MapGymEndpoints();
 
 app.Run();
+
+// Exposed for WebApplicationFactory-based integration tests.
+public partial class Program
+{ }
