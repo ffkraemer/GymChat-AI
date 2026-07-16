@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Net.Http.Json;
 
-namespace GymChatAI.Infrastructure.Ai;
+namespace GymChatAI.Infrastructure.AI;
 
 public class GeminiAssistantService : IAIAssistantService
 {

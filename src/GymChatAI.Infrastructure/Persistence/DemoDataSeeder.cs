@@ -31,5 +31,42 @@ public static class DemoDataSeeder
 
         foreach (var faq in faqs)
             store.Faqs[faq.Id] = faq;
+
+        SeedLoyaltyDemoData(store, gym);
+    }
+
+    /// <summary>
+    /// Seeds a few members and one campaign per automatic type, so the loyalty engine
+    /// (see LoyaltyEngineHandler / LoyaltyEngineBackgroundService) has something to act on
+    /// without needing real member data. Note: a freshly-seeded member has never checked in
+    /// (LastCheckInAtUtc is null), so - by Member.IsInactiveFor's own definition - it also
+    /// qualifies for the Reactivation campaign; that's an intentional simplification for the demo,
+    /// not a bug.
+    /// </summary>
+    private static void SeedLoyaltyDemoData(InMemoryDataStore store, Gym gym)
+    {
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        var newMember = new Member(gym.Id, "Ana Silva", "351922000001");
+        var birthdayMember = new Member(gym.Id, "Bruno Costa", "351922000002", new DateOnly(today.Year - 30, today.Month, today.Day));
+        var inactiveMember = new Member(gym.Id, "Carla Mendes", "351922000003");
+
+        foreach (var member in new[] { newMember, birthdayMember, inactiveMember })
+            store.Members[member.Id] = member;
+
+        var campaigns = new[]
+        {
+            new Campaign(gym.Id, "Boas-vindas", CampaignType.Welcome,
+                "Olá {FirstName}! Bem-vindo(a) ao {GymName} 🎉 Qualquer dúvida sobre horários, planos ou aulas, escreve-nos aqui a qualquer momento!",
+                triggerDayOffset: 0),
+            new Campaign(gym.Id, "Aniversário", CampaignType.Birthday,
+                "Parabéns, {FirstName}! 🎂 A equipa do {GymName} deseja-te um excelente dia. Aparece esta semana para umas boas vindas especiais!"),
+            new Campaign(gym.Id, "Reativação", CampaignType.Reactivation,
+                "Sentimos a tua falta, {FirstName}! Já lá vão uns dias desde a tua última visita ao {GymName}. Queres que te ajudemos a planear o teu regresso?",
+                triggerDayOffset: 30),
+        };
+
+        foreach (var campaign in campaigns)
+            store.Campaigns[campaign.Id] = campaign;
     }
 }

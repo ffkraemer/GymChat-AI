@@ -25,6 +25,9 @@ public class Member : Entity
 
     public DateOnly? BirthDate { get; private set; }
 
+    /// <summary>First token of the full name, used to personalize campaign messages (e.g. "{FirstName}").</summary>
+    public string FirstName => FullName.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? FullName;
+
     public string FullName { get; private set; } = default!;
 
     public Guid GymId { get; private set; }

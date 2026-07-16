@@ -1,4 +1,5 @@
 using GymChatAI.Domain.Entities;
+using GymChatAI.Domain.Enums;
 
 namespace GymChatAI.Application.Abstractions;
 
@@ -7,6 +8,9 @@ public interface IGymRepository
     Task<Gym?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
 
     Task<Gym?> GetByWhatsAppPhoneNumberIdAsync(string phoneNumberId, CancellationToken cancellationToken = default);
+
+    /// <summary>All active gyms - used by the loyalty engine scheduler to iterate every tenant.</summary>
+    Task<IReadOnlyList<Gym>> GetAllActiveAsync(CancellationToken cancellationToken = default);
 
     Task AddAsync(Gym gym, CancellationToken cancellationToken = default);
 }
@@ -48,4 +52,30 @@ public interface ILeadRepository
 public interface IMemberRepository
 {
     Task<Member?> GetByPhoneAsync(Guid gymId, string phoneNumber, CancellationToken cancellationToken = default);
+
+    /// <summary>All active members of a gym - the loyalty engine evaluates its rules against this set.</summary>
+    Task<IReadOnlyList<Member>> GetActiveByGymAsync(Guid gymId, CancellationToken cancellationToken = default);
+}
+
+public interface ICampaignRepository
+{
+    Task<IReadOnlyList<Campaign>> GetActiveByGymAndTypeAsync(Guid gymId, CampaignType type, CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<Campaign>> GetByGymAsync(Guid gymId, CancellationToken cancellationToken = default);
+
+    Task<Campaign?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
+
+    Task AddAsync(Campaign campaign, CancellationToken cancellationToken = default);
+}
+
+public interface ICampaignMessageRepository
+{
+    /// <summary>Used as the idempotency guard before dispatching a campaign to a member/period.</summary>
+    Task<bool> ExistsAsync(Guid campaignId, Guid? memberId, string? periodKey, CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<CampaignMessage>> GetByGymAsync(Guid gymId, CancellationToken cancellationToken = default);
+
+    Task AddAsync(CampaignMessage campaignMessage, CancellationToken cancellationToken = default);
+
+    Task UpdateAsync(CampaignMessage campaignMessage, CancellationToken cancellationToken = default);
 }

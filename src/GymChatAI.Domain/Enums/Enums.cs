@@ -61,3 +61,27 @@ public enum LeadStatus
     Converted = 4,
     Lost = 5
 }
+
+/// <summary>Kind of loyalty campaign, each with its own triggering rule.</summary>
+public enum CampaignType
+{
+    /// <summary>Sent automatically N days after a member joins.</summary>
+    Welcome = 1,
+
+    /// <summary>Sent automatically on the member's birthday.</summary>
+    Birthday = 2,
+
+    /// <summary>Sent automatically once a member has been inactive for N days.</summary>
+    Reactivation = 3,
+
+    /// <summary>Triggered manually by an operator from the Administration Portal.</summary>
+    Manual = 4
+}
+
+/// <summary>Delivery status of a single campaign dispatch to one recipient.</summary>
+public enum CampaignMessageStatus
+{
+    Pending = 1,
+    Sent = 2,
+    Failed = 3
+}

@@ -38,7 +38,36 @@ public static class EfDemoDataSeeder
                 "Novos membros que se inscrevam no plano Anual este mês têm 20% de desconto na taxa de inscrição.",
                 DateOnly.FromDateTime(DateTime.UtcNow), DateOnly.FromDateTime(DateTime.UtcNow.AddMonths(1))));
 
+        SeedLoyaltyDemoData(context, gym);
+
         await context.SaveChangesAsync(cancellationToken);
         return gym;
+    }
+
+    /// <summary>
+    /// Seeds a few members and one campaign per automatic type, so the loyalty engine has
+    /// something to act on without needing real member data. Note: a freshly-seeded member
+    /// has never checked in (LastCheckInAtUtc is null), so - by Member.IsInactiveFor's own
+    /// definition - it also qualifies for the Reactivation campaign; that's an intentional
+    /// simplification for the demo, not a bug.
+    /// </summary>
+    private static void SeedLoyaltyDemoData(GymChatDbContext context, Gym gym)
+    {
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        context.Members.AddRange(
+            new Member(gym.Id, "Ana Silva", "351922000001"),
+            new Member(gym.Id, "Bruno Costa", "351922000002", new DateOnly(today.Year - 30, today.Month, today.Day)),
+            new Member(gym.Id, "Carla Mendes", "351922000003"));
+
+        context.Campaigns.AddRange(
+            new Campaign(gym.Id, "Boas-vindas", CampaignType.Welcome,
+                "Olá {FirstName}! Bem-vindo(a) ao {GymName} 🎉 Qualquer dúvida sobre horários, planos ou aulas, escreve-nos aqui a qualquer momento!",
+                triggerDayOffset: 0),
+            new Campaign(gym.Id, "Aniversário", CampaignType.Birthday,
+                "Parabéns, {FirstName}! 🎂 A equipa do {GymName} deseja-te um excelente dia. Aparece esta semana para umas boas vindas especiais!"),
+            new Campaign(gym.Id, "Reativação", CampaignType.Reactivation,
+                "Sentimos a tua falta, {FirstName}! Já lá vão uns dias desde a tua última visita ao {GymName}. Queres que te ajudemos a planear o teu regresso?",
+                triggerDayOffset: 30));
     }
 }

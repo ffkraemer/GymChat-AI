@@ -16,6 +16,9 @@ public class EfGymRepository : IGymRepository
     public Task<Gym?> GetByWhatsAppPhoneNumberIdAsync(string phoneNumberId, CancellationToken cancellationToken = default) =>
         _context.Gyms.FirstOrDefaultAsync(g => g.WhatsAppPhoneNumberId == phoneNumberId, cancellationToken);
 
+    public async Task<IReadOnlyList<Gym>> GetAllActiveAsync(CancellationToken cancellationToken = default) =>
+        await _context.Gyms.Where(g => g.IsActive).ToListAsync(cancellationToken);
+
     public async Task AddAsync(Gym gym, CancellationToken cancellationToken = default)
     {
         _context.Gyms.Add(gym);

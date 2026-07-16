@@ -28,7 +28,7 @@ using (var scope = app.Services.CreateScope())
         // EnsureCreated (rather than Migrate) for now: the schema is still evolving quickly
         // in the MVP phase. Once it stabilizes, run `dotnet ef migrations add InitialCreate`
         // from src/GymChatAI.Infrastructure and switch this to dbContext.Database.MigrateAsync().
-        await dbContext.Database.EnsureCreatedAsync();
+        await dbContext.Database.MigrateAsync();
         await EfDemoDataSeeder.SeedAsync(dbContext, whatsAppOptions);
 
         app.Logger.LogInformation("GymChat AI started using SQL Server persistence.");
@@ -50,6 +50,8 @@ app.MapFaqEndpoints();
 app.MapConversationEndpoints();
 app.MapGymEndpoints();
 app.MapCredentialHealthEndpoints();
+app.MapCampaignEndpoints();
+app.MapMemberEndpoints();
 
 app.Run();
 

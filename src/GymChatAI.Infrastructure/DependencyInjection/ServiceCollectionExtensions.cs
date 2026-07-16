@@ -1,7 +1,8 @@
 using GymChatAI.Application.Abstractions;
+using GymChatAI.Application.Loyalty;
 using GymChatAI.Application.Messaging;
-using GymChatAI.Infrastructure.Ai;
 using GymChatAI.Infrastructure.AI;
+using GymChatAI.Infrastructure.BackgroundServices;
 using GymChatAI.Infrastructure.LanguageDetection;
 using GymChatAI.Infrastructure.Options;
 using GymChatAI.Infrastructure.Persistence;
@@ -38,6 +39,8 @@ public static class ServiceCollectionExtensions
             services.AddScoped<IFaqRepository, EfFaqRepository>();
             services.AddScoped<ILeadRepository, EfLeadRepository>();
             services.AddScoped<IMemberRepository, EfMemberRepository>();
+            services.AddScoped<ICampaignRepository, EfCampaignRepository>();
+            services.AddScoped<ICampaignMessageRepository, EfCampaignMessageRepository>();
         }
         else
         {
@@ -47,7 +50,12 @@ public static class ServiceCollectionExtensions
             services.AddSingleton<IFaqRepository, InMemoryFaqRepository>();
             services.AddSingleton<ILeadRepository, InMemoryLeadRepository>();
             services.AddSingleton<IMemberRepository, InMemoryMemberRepository>();
+            services.AddSingleton<ICampaignRepository, InMemoryCampaignRepository>();
+            services.AddSingleton<ICampaignMessageRepository, InMemoryCampaignMessageRepository>();
         }
+
+        services.AddScoped<LoyaltyEngineHandler>();
+        services.AddHostedService<LoyaltyEngineBackgroundService>();
 
         return services;
     }

@@ -1,0 +1,294 @@
+{
+  "info": {
+    "name": "GymChat AI - API",
+    "description": "Coleção de todos os endpoints da GymChat AI Api (POC + MVP: SQL Server, motor de fidelização, health checks de credenciais).\n\nComo usar:\n1. Define a variável de coleção `gymId` depois de correres \"Gyms > Get by WhatsApp Phone Number Id\"\n2. Define `campaignId` e `memberId` depois de correres os respetivos GETs de listagem\n\nNota sobre enums: `CampaignType` é serializado como número (1=Welcome, 2=Birthday, 3=Reactivation, 4=Manual), já que o projeto não tem um JsonStringEnumConverter configurado.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:5277", "type": "string" },
+    { "key": "whatsAppPhoneNumberId", "value": "", "type": "string" },
+    { "key": "gymId", "value": "", "type": "string" },
+    { "key": "campaignId", "value": "", "type": "string" },
+    { "key": "memberId", "value": "", "type": "string" },
+    { "key": "conversationId", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health geral",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] }
+          }
+        },
+        {
+          "name": "Health WhatsApp (valida o AccessToken)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/health/whatsapp", "host": ["{{baseUrl}}"], "path": ["health", "whatsapp"] }
+          }
+        },
+        {
+          "name": "Health IA (valida a chave do provider ativo)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/health/ai", "host": ["{{baseUrl}}"], "path": ["health", "ai"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Gyms",
+      "item": [
+        {
+          "name": "Get by WhatsApp Phone Number Id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    pm.collectionVariables.set('gymId', body.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/gyms/{{whatsAppPhoneNumberId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "gyms", "{{whatsAppPhoneNumberId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "FAQs",
+      "item": [
+        {
+          "name": "Listar FAQs do gym",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/faqs/{{gymId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "faqs", "{{gymId}}"]
+            }
+          }
+        },
+        {
+          "name": "Criar FAQ",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"gymId\": \"{{gymId}}\",\n  \"question\": \"Têm parqueamento?\",\n  \"answer\": \"Sim, temos parque gratuito para clientes.\",\n  \"category\": \"Instalações\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/faqs", "host": ["{{baseUrl}}"], "path": ["api", "faqs"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Conversations",
+      "item": [
+        {
+          "name": "Listar conversas do gym",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    if (Array.isArray(body) && body.length > 0) {",
+                  "        pm.collectionVariables.set('conversationId', body[0].id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/conversations/gym/{{gymId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "conversations", "gym", "{{gymId}}"]
+            }
+          }
+        },
+        {
+          "name": "Consultar conversa por Id (histórico completo)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/conversations/{{conversationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "conversations", "{{conversationId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Members",
+      "item": [
+        {
+          "name": "Listar membros ativos do gym",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    if (Array.isArray(body) && body.length > 0) {",
+                  "        pm.collectionVariables.set('memberId', body[0].id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/members/gym/{{gymId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "members", "gym", "{{gymId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Loyalty Campaigns",
+      "item": [
+        {
+          "name": "Listar campanhas do gym",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    if (Array.isArray(body) && body.length > 0) {",
+                  "        pm.collectionVariables.set('campaignId', body[0].id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/campaigns/gym/{{gymId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "campaigns", "gym", "{{gymId}}"]
+            }
+          }
+        },
+        {
+          "name": "Criar campanha Welcome (dia 0)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"gymId\": \"{{gymId}}\",\n  \"name\": \"Boas-vindas (manual)\",\n  \"type\": 1,\n  \"messageTemplate\": \"Olá {FirstName}! Bem-vindo(a) ao {GymName} 🎉\",\n  \"triggerDayOffset\": 0\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/campaigns", "host": ["{{baseUrl}}"], "path": ["api", "campaigns"] }
+          },
+          "description": "type: 1=Welcome, 2=Birthday, 3=Reactivation, 4=Manual. Welcome e Reactivation exigem triggerDayOffset; Birthday e Manual não."
+        },
+        {
+          "name": "Criar campanha Manual (sem trigger automático)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"gymId\": \"{{gymId}}\",\n  \"name\": \"Promoção desta semana\",\n  \"type\": 4,\n  \"messageTemplate\": \"Olá {FirstName}! Esta semana temos 20% de desconto na inscrição no {GymName}. Aproveita!\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/campaigns", "host": ["{{baseUrl}}"], "path": ["api", "campaigns"] }
+          }
+        },
+        {
+          "name": "Disparar campanha manualmente para um membro",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"memberIds\": [\"{{memberId}}\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/campaigns/{{campaignId}}/trigger",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "campaigns", "{{campaignId}}", "trigger"]
+            }
+          }
+        },
+        {
+          "name": "Histórico de mensagens de campanhas",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/campaigns/gym/{{gymId}}/history",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "campaigns", "gym", "{{gymId}}", "history"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "WhatsApp Webhook (referência - o Meta chama estes, normalmente não testas manualmente)",
+      "item": [
+        {
+          "name": "Verificação do webhook (handshake)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/webhooks/whatsapp/?hub.mode=subscribe&hub.verify_token=SUBSTITUI_PELO_TEU_VERIFY_TOKEN&hub.challenge=12345",
+              "host": ["{{baseUrl}}"],
+              "path": ["webhooks", "whatsapp", ""],
+              "query": [
+                { "key": "hub.mode", "value": "subscribe" },
+                { "key": "hub.verify_token", "value": "SUBSTITUI_PELO_TEU_VERIFY_TOKEN" },
+                { "key": "hub.challenge", "value": "12345" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Simular mensagem recebida (payload de teste)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"123\",\n      \"changes\": [\n        {\n          \"field\": \"messages\",\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": { \"display_phone_number\": \"351000000000\", \"phone_number_id\": \"{{whatsAppPhoneNumberId}}\" },\n            \"contacts\": [ { \"profile\": { \"name\": \"Teste Postman\" }, \"wa_id\": \"351900000000\" } ],\n            \"messages\": [\n              {\n                \"from\": \"351900000000\",\n                \"id\": \"wamid.TESTE_POSTMAN\",\n                \"timestamp\": \"1720000000\",\n                \"type\": \"text\",\n                \"text\": { \"body\": \"Qual o horario do ginasio?\" }\n              }\n            ]\n          }\n        }\n      ]\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/webhooks/whatsapp/",
+              "host": ["{{baseUrl}}"],
+              "path": ["webhooks", "whatsapp", ""]
+            }
+          },
+          "description": "Simula um payload de webhook do Meta. Útil para testar o fluxo de receção sem depender do WhatsApp real - mas repara que a resposta gerada pela IA vai tentar ser enviada a sério pelo WhatsApp (para 351900000000, que é fictício), por isso vais ver um erro 'Recipient phone number not in allowed list' no log, o que é esperado."
+        }
+      ]
+    }
+  ]
+}

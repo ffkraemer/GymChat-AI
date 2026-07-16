@@ -17,6 +17,8 @@ public class GymChatDbContext : DbContext
     public DbSet<Faq> Faqs => Set<Faq>();
     public DbSet<Plan> Plans => Set<Plan>();
     public DbSet<Promotion> Promotions => Set<Promotion>();
+    public DbSet<Campaign> Campaigns => Set<Campaign>();
+    public DbSet<CampaignMessage> CampaignMessages => Set<CampaignMessage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

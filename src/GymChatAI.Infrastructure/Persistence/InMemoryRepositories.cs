@@ -7,7 +7,8 @@ namespace GymChatAI.Infrastructure.Persistence;
 /// <summary>
 /// Process-memory storage for the POC. Deliberately simple (ConcurrentDictionary-based)
 /// so the platform's core messaging flow can be validated end-to-end without provisioning
-/// SQL Server yet. Swappable for EF Core repositories behind the same interfaces in the MVP phase.
+/// a real database. Swappable for real repositories behind the same interfaces later,
+/// once persistence needs to survive a restart.
 /// </summary>
 public class InMemoryDataStore
 {
@@ -16,6 +17,8 @@ public class InMemoryDataStore
     public ConcurrentDictionary<Guid, Faq> Faqs { get; } = new();
     public ConcurrentDictionary<Guid, Lead> Leads { get; } = new();
     public ConcurrentDictionary<Guid, Member> Members { get; } = new();
+    public ConcurrentDictionary<Guid, Campaign> Campaigns { get; } = new();
+    public ConcurrentDictionary<Guid, CampaignMessage> CampaignMessages { get; } = new();
 }
 
 public class InMemoryGymRepository : IGymRepository
@@ -29,6 +32,12 @@ public class InMemoryGymRepository : IGymRepository
 
     public Task<Gym?> GetByWhatsAppPhoneNumberIdAsync(string phoneNumberId, CancellationToken cancellationToken = default) =>
         Task.FromResult(_store.Gyms.Values.FirstOrDefault(g => g.WhatsAppPhoneNumberId == phoneNumberId));
+
+    public Task<IReadOnlyList<Gym>> GetAllActiveAsync(CancellationToken cancellationToken = default)
+    {
+        IReadOnlyList<Gym> result = _store.Gyms.Values.Where(g => g.IsActive).ToList();
+        return Task.FromResult(result);
+    }
 
     public Task AddAsync(Gym gym, CancellationToken cancellationToken = default)
     {
@@ -111,29 +120,26 @@ public class InMemoryFaqRepository : IFaqRepository
             .Where(w => w.Length > 2)
             .ToHashSet();
 
-        IReadOnlyList<Faq> result = _store.Faqs.Values
+        var result = _store.Faqs.Values
             .Where(f => f.GymId == gymId && f.IsActive)
             .Select(f => (Faq: f, Score: CountOverlap(f.Question, queryWords)))
             .Where(x => x.Score > 0)
             .OrderByDescending(x => x.Score)
             .Take(maxResults)
             .Select(x => x.Faq)
-            // Fall back to returning a handful of general FAQs if nothing matched,
-            // so the assistant still has some grounding context.
-            .DefaultIfEmpty()
-            .Where(f => f is not null)
-            .Select(f => f!)
             .ToList();
 
         if (result.Count == 0)
         {
+            // Fall back to returning a handful of general FAQs if nothing matched,
+            // so the assistant still has some grounding context.
             result = _store.Faqs.Values
                 .Where(f => f.GymId == gymId && f.IsActive)
                 .Take(maxResults)
                 .ToList();
         }
 
-        return Task.FromResult(result);
+        return Task.FromResult<IReadOnlyList<Faq>>(result);
     }
 
     private static int CountOverlap(string text, HashSet<string> queryWords)
@@ -179,4 +185,81 @@ public class InMemoryMemberRepository : IMemberRepository
 
     public Task<Member?> GetByPhoneAsync(Guid gymId, string phoneNumber, CancellationToken cancellationToken = default) =>
         Task.FromResult(_store.Members.Values.FirstOrDefault(m => m.GymId == gymId && m.PhoneNumber == phoneNumber));
+
+    public Task<IReadOnlyList<Member>> GetActiveByGymAsync(Guid gymId, CancellationToken cancellationToken = default)
+    {
+        IReadOnlyList<Member> result = _store.Members.Values
+            .Where(m => m.GymId == gymId && m.Status == Domain.Enums.MemberStatus.Active)
+            .ToList();
+
+        return Task.FromResult(result);
+    }
+}
+
+public class InMemoryCampaignRepository : ICampaignRepository
+{
+    private readonly InMemoryDataStore _store;
+
+    public InMemoryCampaignRepository(InMemoryDataStore store) => _store = store;
+
+    public Task<IReadOnlyList<Campaign>> GetActiveByGymAndTypeAsync(Guid gymId, Domain.Enums.CampaignType type, CancellationToken cancellationToken = default)
+    {
+        IReadOnlyList<Campaign> result = _store.Campaigns.Values
+            .Where(c => c.GymId == gymId && c.Type == type && c.IsActive)
+            .ToList();
+
+        return Task.FromResult(result);
+    }
+
+    public Task<IReadOnlyList<Campaign>> GetByGymAsync(Guid gymId, CancellationToken cancellationToken = default)
+    {
+        IReadOnlyList<Campaign> result = _store.Campaigns.Values.Where(c => c.GymId == gymId).ToList();
+        return Task.FromResult(result);
+    }
+
+    public Task<Campaign?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) =>
+        Task.FromResult(_store.Campaigns.GetValueOrDefault(id));
+
+    public Task AddAsync(Campaign campaign, CancellationToken cancellationToken = default)
+    {
+        _store.Campaigns[campaign.Id] = campaign;
+        return Task.CompletedTask;
+    }
+}
+
+public class InMemoryCampaignMessageRepository : ICampaignMessageRepository
+{
+    private readonly InMemoryDataStore _store;
+
+    public InMemoryCampaignMessageRepository(InMemoryDataStore store) => _store = store;
+
+    public Task<bool> ExistsAsync(Guid campaignId, Guid? memberId, string? periodKey, CancellationToken cancellationToken = default)
+    {
+        var exists = _store.CampaignMessages.Values.Any(m =>
+            m.CampaignId == campaignId && m.MemberId == memberId && m.PeriodKey == periodKey);
+
+        return Task.FromResult(exists);
+    }
+
+    public Task<IReadOnlyList<CampaignMessage>> GetByGymAsync(Guid gymId, CancellationToken cancellationToken = default)
+    {
+        IReadOnlyList<CampaignMessage> result = _store.CampaignMessages.Values
+            .Where(m => m.GymId == gymId)
+            .OrderByDescending(m => m.CreatedAtUtc)
+            .ToList();
+
+        return Task.FromResult(result);
+    }
+
+    public Task AddAsync(CampaignMessage campaignMessage, CancellationToken cancellationToken = default)
+    {
+        _store.CampaignMessages[campaignMessage.Id] = campaignMessage;
+        return Task.CompletedTask;
+    }
+
+    public Task UpdateAsync(CampaignMessage campaignMessage, CancellationToken cancellationToken = default)
+    {
+        _store.CampaignMessages[campaignMessage.Id] = campaignMessage;
+        return Task.CompletedTask;
+    }
 }
