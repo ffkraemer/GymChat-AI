@@ -38,7 +38,7 @@ public class OpenAIAssistantService : IAIAssistantService
 
         messages.Add(new ChatMessage("user", userMessage));
 
-        var request = new OpenAiChatCompletionRequest(_options.Model, messages, _options.Temperature, _options.MaxOutputTokens);
+        var request = new OpenAIChatCompletionRequest(_options.Model, messages, _options.Temperature, _options.MaxOutputTokens);
 
         var response = await _httpClient.PostAsJsonAsync("chat/completions", request, cancellationToken);
 

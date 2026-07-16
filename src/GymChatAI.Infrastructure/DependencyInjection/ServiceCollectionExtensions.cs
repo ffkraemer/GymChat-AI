@@ -3,25 +3,27 @@ using GymChatAI.Application.Loyalty;
 using GymChatAI.Application.Messaging;
 using GymChatAI.Infrastructure.AI;
 using GymChatAI.Infrastructure.BackgroundServices;
+using GymChatAI.Infrastructure.Identity;
 using GymChatAI.Infrastructure.LanguageDetection;
 using GymChatAI.Infrastructure.Options;
 using GymChatAI.Infrastructure.Persistence;
 using GymChatAI.Infrastructure.Persistence.EfCore;
 using GymChatAI.Infrastructure.Persistence.EfCore.Repositories;
 using GymChatAI.Infrastructure.WhatsApp;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 namespace GymChatAI.Infrastructure.DependencyInjection;
 
 public static class ServiceCollectionExtensions
 {
     /// <summary>
-    /// Registers persistence, WhatsApp and AI. Uses SQL Server (EF Core) when
-    /// ConnectionStrings:GymChatDb is configured; otherwise falls back to the original
-    /// in-memory store, so nothing changes for anyone who hasn't set up a database yet -
-    /// this is a purely additive, opt-in upgrade path from the POC.
+    /// Registers persistence, WhatsApp, AI and the loyalty engine. Uses SQL Server (EF Core)
+    /// when ConnectionStrings:GymChatDb is configured; otherwise falls back to the original
+    /// in-memory store, so nothing changes for anyone who hasn't set up a database yet.
     /// </summary>
     public static IServiceCollection AddGymChatInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
@@ -60,6 +62,32 @@ public static class ServiceCollectionExtensions
         return services;
     }
 
+    /// <summary>
+    /// Registers ASP.NET Core Identity (operator/admin accounts for the Administration Portal)
+    /// with the built-in Bearer token scheme - no manual JWT signing/validation code needed.
+    /// Requires SQL Server (call alongside AddGymChatInfrastructure once a connection string
+    /// is configured): Identity needs a real, durable user store, so this is intentionally
+    /// NOT available in the in-memory persistence mode.
+    /// </summary>
+    public static IServiceCollection AddGymChatIdentity(this IServiceCollection services)
+    {
+        services
+            .AddIdentityApiEndpoints<ApplicationUser>(options =>
+            {
+                options.Password.RequiredLength = 8;
+                options.Password.RequireNonAlphanumeric = false;
+                options.User.RequireUniqueEmail = true;
+            })
+            .AddRoles<IdentityRole<Guid>>()
+            .AddClaimsPrincipalFactory<GymClaimsPrincipalFactory>()
+            .AddEntityFrameworkStores<GymChatDbContext>();
+
+        services.AddAuthorizationBuilder()
+            .AddPolicy(Policies.Admin, policy => policy.RequireRole(Roles.Admin, Roles.PlatformAdmin));
+
+        return services;
+    }
+
     private static void AddSharedServices(IServiceCollection services, IConfiguration configuration)
     {
         services.Configure<WhatsAppOptions>(configuration.GetSection(WhatsAppOptions.SectionName));
@@ -77,19 +105,17 @@ public static class ServiceCollectionExtensions
         var provider = configuration["AiProvider"]?.Trim().ToLowerInvariant();
 
         provider ??= !string.IsNullOrWhiteSpace(configuration[$"{GeminiOptions.SectionName}:ApiKey"]) ? "gemini"
-                   : !string.IsNullOrWhiteSpace(configuration[$"{OpenAIOptions.SectionName}:ApiKey"]) ? "openai"
-                   : "azureopenai";
+            : !string.IsNullOrWhiteSpace(configuration[$"{OpenAIOptions.SectionName}:ApiKey"]) ? "openai"
+            : "azureopenai";
 
         switch (provider)
         {
             case "gemini":
-                services.AddHttpClient<IAIAssistantService, GeminiAssistantService>();
+                services.AddHttpClient<IAIAssistantService, GeminiAIAssistantService>();
                 break;
-
             case "openai":
                 services.AddHttpClient<IAIAssistantService, OpenAIAssistantService>();
                 break;
-
             default:
                 services.AddHttpClient<IAIAssistantService, AzureOpenAIAssistantService>();
                 break;

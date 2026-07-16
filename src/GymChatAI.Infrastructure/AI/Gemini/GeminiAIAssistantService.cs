@@ -7,15 +7,15 @@ using System.Net.Http.Json;
 
 namespace GymChatAI.Infrastructure.AI;
 
-public class GeminiAssistantService : IAIAssistantService
+public class GeminiAIAssistantService : IAIAssistantService
 {
     private const string BaseUrl = "https://generativelanguage.googleapis.com/v1beta/";
 
     private readonly HttpClient _httpClient;
-    private readonly ILogger<GeminiAssistantService> _logger;
+    private readonly ILogger<GeminiAIAssistantService> _logger;
     private readonly GeminiOptions _options;
 
-    public GeminiAssistantService(HttpClient httpClient, IOptions<GeminiOptions> options, ILogger<GeminiAssistantService> logger)
+    public GeminiAIAssistantService(HttpClient httpClient, IOptions<GeminiOptions> options, ILogger<GeminiAIAssistantService> logger)
     {
         _httpClient = httpClient;
         _options = options.Value;

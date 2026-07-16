@@ -79,6 +79,34 @@ public static class HealthEndpoints
         return app;
     }
 
+    private static async Task<CredentialHealthResponse> CheckAzureOpenAiAsync(HttpClient client, AzureOpenAIOptions options, CancellationToken ct)
+    {
+        const string renewAt = "https://portal.azure.com → o teu recurso Azure OpenAI → Keys and Endpoint";
+
+        if (string.IsNullOrWhiteSpace(options.ApiKey) || string.IsNullOrWhiteSpace(options.Endpoint))
+            return new CredentialHealthResponse("AzureOpenAI", "not-configured", "ApiKey ou Endpoint em falta.", renewAt);
+
+        try
+        {
+            var url = $"{options.Endpoint.TrimEnd('/')}/openai/deployments?api-version={options.ApiVersion}";
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.TryAddWithoutValidation("api-key", options.ApiKey);
+
+            var response = await client.SendAsync(request, ct);
+
+            if (response.IsSuccessStatusCode)
+                return new CredentialHealthResponse("AzureOpenAI", "ok", "Chave válida.", null);
+
+            var body = await response.Content.ReadAsStringAsync(ct);
+            var status = (int)response.StatusCode is 401 or 403 ? "expired" : "error";
+            return new CredentialHealthResponse("AzureOpenAI", status, $"Resposta {(int)response.StatusCode}: {body}", renewAt);
+        }
+        catch (Exception ex)
+        {
+            return new CredentialHealthResponse("AzureOpenAI", "error", $"Falha de rede: {ex.Message}", renewAt);
+        }
+    }
+
     private static async Task<CredentialHealthResponse> CheckGeminiAsync(HttpClient client, GeminiOptions options, CancellationToken ct)
     {
         const string renewAt = "https://aistudio.google.com/apikey";
@@ -130,34 +158,6 @@ public static class HealthEndpoints
         catch (Exception ex)
         {
             return new CredentialHealthResponse("OpenAI", "error", $"Falha de rede: {ex.Message}", renewAt);
-        }
-    }
-
-    private static async Task<CredentialHealthResponse> CheckAzureOpenAiAsync(HttpClient client, AzureOpenAIOptions options, CancellationToken ct)
-    {
-        const string renewAt = "https://portal.azure.com → o teu recurso Azure OpenAI → Keys and Endpoint";
-
-        if (string.IsNullOrWhiteSpace(options.ApiKey) || string.IsNullOrWhiteSpace(options.Endpoint))
-            return new CredentialHealthResponse("AzureOpenAI", "not-configured", "ApiKey ou Endpoint em falta.", renewAt);
-
-        try
-        {
-            var url = $"{options.Endpoint.TrimEnd('/')}/openai/deployments?api-version={options.ApiVersion}";
-            using var request = new HttpRequestMessage(HttpMethod.Get, url);
-            request.Headers.TryAddWithoutValidation("api-key", options.ApiKey);
-
-            var response = await client.SendAsync(request, ct);
-
-            if (response.IsSuccessStatusCode)
-                return new CredentialHealthResponse("AzureOpenAI", "ok", "Chave válida.", null);
-
-            var body = await response.Content.ReadAsStringAsync(ct);
-            var status = (int)response.StatusCode is 401 or 403 ? "expired" : "error";
-            return new CredentialHealthResponse("AzureOpenAI", status, $"Resposta {(int)response.StatusCode}: {body}", renewAt);
-        }
-        catch (Exception ex)
-        {
-            return new CredentialHealthResponse("AzureOpenAI", "error", $"Falha de rede: {ex.Message}", renewAt);
         }
     }
 }

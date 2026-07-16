@@ -1,17 +1,23 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-	<UserSecretsId>ba290435-4e7a-43ed-b616-30abc6ce72e8</UserSecretsId>
-  </PropertyGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\GymChatAI.Application\GymChatAI.Application.csproj" />
-  </ItemGroup>
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<UserSecretsId>ba290435-4e7a-43ed-b616-30abc6ce72e8</UserSecretsId>
+	</PropertyGroup>
 
 	<ItemGroup>
+		<ProjectReference Include="..\GymChatAI.Application\GymChatAI.Application.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<FrameworkReference Include="Microsoft.AspNetCore.App" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.AspNetCore.Identity" Version="2.3.11" />
+		<PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.10" />
 		<PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.10" />
 		<PackageReference Include="Microsoft.Extensions.Http" Version="10.0.10" />
 		<PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.10" />

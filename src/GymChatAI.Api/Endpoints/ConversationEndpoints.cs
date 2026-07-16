@@ -1,5 +1,6 @@
 using GymChatAI.Application.Abstractions;
 using GymChatAI.Domain.Entities;
+using GymChatAI.Infrastructure.Identity;
 
 namespace GymChatAI.Api.Endpoints;
 
@@ -22,15 +23,17 @@ public record ConversationResponse(Guid Id, string ContactPhoneNumber, string St
 
 public static class ConversationEndpoints
 {
-    public static IEndpointRouteBuilder MapConversationEndpoints(this IEndpointRouteBuilder app)
+    public static IEndpointRouteBuilder MapConversationEndpoints(this IEndpointRouteBuilder app, bool requireAuth)
     {
         var group = app.MapGroup("/api/conversations").WithTags("Conversations");
+        if (requireAuth) group.RequireAuthorization(Policies.Admin);
 
-        group.MapGet("/gym/{gymId:guid}", async (Guid gymId, IConversationRepository repository, CancellationToken ct) =>
+        var byGym = group.MapGet("/gym/{gymId:guid}", async (Guid gymId, IConversationRepository repository, CancellationToken ct) =>
         {
             var conversations = await repository.GetByGymAsync(gymId, ct);
             return Results.Ok(conversations.Select(ConversationResponse.From));
         });
+        if (requireAuth) byGym.AddEndpointFilter<GymScopeFilter>();
 
         group.MapGet("/{conversationId:guid}", async (Guid conversationId, IConversationRepository repository, CancellationToken ct) =>
         {
