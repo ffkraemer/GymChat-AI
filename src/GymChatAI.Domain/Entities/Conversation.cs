@@ -13,6 +13,24 @@ public class Conversation : Entity
 {
     private readonly List<Message> _messages = new();
 
+    public Guid GymId { get; private set; }
+
+    public string ContactPhoneNumber { get; private set; } = default!;
+
+    public Guid? LeadId { get; private set; }
+
+    public Guid? MemberId { get; private set; }
+
+    public ConversationStatus Status { get; private set; } = ConversationStatus.Open;
+
+    public Language PreferredLanguage { get; private set; } = Language.Unknown;
+
+    public DateTimeOffset LastMessageAtUtc { get; private set; } = DateTimeOffset.UtcNow;
+
+    public IReadOnlyCollection<Message> Messages => _messages.AsReadOnly();
+
+    private Conversation() { }
+
     public Conversation(Guid gymId, string contactPhoneNumber, Guid? leadId = null, Guid? memberId = null)
     {
         if (string.IsNullOrWhiteSpace(contactPhoneNumber))
@@ -23,25 +41,6 @@ public class Conversation : Entity
         LeadId = leadId;
         MemberId = memberId;
     }
-
-    private Conversation()
-    { }
-
-    public string ContactPhoneNumber { get; private set; } = default!;
-
-    public Guid GymId { get; private set; }
-
-    public DateTimeOffset LastMessageAtUtc { get; private set; } = DateTimeOffset.UtcNow;
-
-    public Guid? LeadId { get; private set; }
-
-    public Guid? MemberId { get; private set; }
-
-    public IReadOnlyCollection<Message> Messages => _messages.AsReadOnly();
-
-    public Language PreferredLanguage { get; private set; } = Language.Unknown;
-
-    public ConversationStatus Status { get; private set; } = ConversationStatus.Open;
 
     public Message AddInboundMessage(string content, string? whatsAppMessageId, Language detectedLanguage)
     {
@@ -66,13 +65,25 @@ public class Conversation : Entity
         return message;
     }
 
-    public void Close() => Status = ConversationStatus.Closed;
-
-    public void EscalateToHuman() => Status = ConversationStatus.WaitingForHuman;
-
     /// <summary>Returns the most recent messages, oldest first, to be used as AI conversational context.</summary>
     public IReadOnlyList<Message> GetRecentContext(int maxMessages) =>
         _messages.OrderByDescending(m => m.CreatedAtUtc).Take(maxMessages).Reverse().ToList();
+
+    public void EscalateToHuman() => Status = ConversationStatus.WaitingForHuman;
+
+    /// <summary>
+    /// Called when a queued/retried AI reply finally succeeds after an earlier escalation -
+    /// the customer got an answer after all, so there's no need to keep a human flagged
+    /// unless a new message re-escalates it later. Only reopens from WaitingForHuman;
+    /// never touches a conversation a human deliberately Closed.
+    /// </summary>
+    public void ResolveEscalation()
+    {
+        if (Status == ConversationStatus.WaitingForHuman)
+            Status = ConversationStatus.Open;
+    }
+
+    public void Close() => Status = ConversationStatus.Closed;
 
     public void LinkLead(Guid leadId) => LeadId = leadId;
 

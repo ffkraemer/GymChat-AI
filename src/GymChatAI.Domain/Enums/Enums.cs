@@ -85,3 +85,16 @@ public enum CampaignMessageStatus
     Sent = 2,
     Failed = 3
 }
+
+/// <summary>Status of a queued reply awaiting a retry after the AI provider was unavailable.</summary>
+public enum PendingAIReplyStatus
+{
+    /// <summary>Still waiting to be retried.</summary>
+    Pending = 1,
+
+    /// <summary>A retry succeeded - the customer got their answer after all.</summary>
+    Resolved = 2,
+
+    /// <summary>Gave up after the maximum number of attempts; the conversation stays escalated to a human.</summary>
+    Abandoned = 3
+}

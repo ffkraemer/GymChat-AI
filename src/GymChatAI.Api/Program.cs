@@ -21,7 +21,19 @@ if (usingSqlServer)
     builder.Services.AddGymChatIdentity();
 }
 
+builder.Services.AddCors(options =>          // <-- NOVO
+{
+    options.AddPolicy("AdminPortal", policy =>
+    {
+        policy.WithOrigins("http://localhost:5173")
+              .AllowAnyHeader()
+              .AllowAnyMethod();
+    });
+});
+
 var app = builder.Build();
+
+app.UseCors("AdminPortal");
 
 // Apply pending EF Core migrations (SQL Server mode) and seed a demo gym + starter FAQ
 // knowledge base (and, in SQL Server mode, a demo admin account), so the app can be
@@ -61,6 +73,7 @@ if (usingSqlServer)
     app.UseAuthorization();
     app.MapGroup("/api/auth").WithTags("Auth").MapIdentityApi<ApplicationUser>();
     app.MapCurrentUserEndpoint();
+    app.MapRegisterOperatorEndpoint();
 }
 
 app.MapGet("/health", () => Results.Ok(new { status = "healthy", persistence = usingSqlServer ? "sql-server" : "in-memory", auth = usingSqlServer }))
@@ -77,4 +90,5 @@ app.MapCredentialHealthEndpoints();
 app.Run();
 
 // Exposed for WebApplicationFactory-based integration tests.
-public partial class Program { }
+public partial class Program
+{ }

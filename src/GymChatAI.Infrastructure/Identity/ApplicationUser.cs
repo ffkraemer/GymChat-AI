@@ -33,4 +33,11 @@ public static class Policies
 {
     /// <summary>Any authenticated gym Admin (or a future PlatformAdmin) - the baseline for every Administration Portal endpoint.</summary>
     public const string Admin = "Admin";
+
+    /// <summary>
+    /// Platform-level operations only (creating gyms, registering the first operator of a
+    /// new gym). Deliberately stricter than <see cref="Admin"/> - a gym's own Admin should
+    /// never be able to create or manage other gyms.
+    /// </summary>
+    public const string PlatformAdmin = "PlatformAdmin";
 }

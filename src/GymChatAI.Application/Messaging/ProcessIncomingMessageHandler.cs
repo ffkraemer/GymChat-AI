@@ -6,9 +6,11 @@ using Microsoft.Extensions.Logging;
 namespace GymChatAI.Application.Messaging;
 
 /// <summary>
-/// Orchestrates the end-to-end POC flow:
+/// Orchestrates the end-to-end flow:
 /// receive message -> resolve gym/conversation -> detect language ->
 /// ground with FAQs -> ask the AI assistant -> persist -> send reply.
+/// If the AI assistant fails, the message is queued as a PendingAIReply so
+/// RetryPendingAIRepliesHandler can try again later instead of it being lost.
 /// </summary>
 public class ProcessIncomingMessageHandler
 {
@@ -20,6 +22,7 @@ public class ProcessIncomingMessageHandler
     private readonly IFaqRepository _faqRepository;
     private readonly ILeadRepository _leadRepository;
     private readonly IMemberRepository _memberRepository;
+    private readonly IPendingAIReplyRepository _pendingAIReplyRepository;
     private readonly ILanguageDetector _languageDetector;
     private readonly IAIAssistantService _aiAssistantService;
     private readonly IWhatsAppMessageSender _whatsAppMessageSender;
@@ -31,6 +34,7 @@ public class ProcessIncomingMessageHandler
         IFaqRepository faqRepository,
         ILeadRepository leadRepository,
         IMemberRepository memberRepository,
+        IPendingAIReplyRepository pendingAIReplyRepository,
         ILanguageDetector languageDetector,
         IAIAssistantService aiAssistantService,
         IWhatsAppMessageSender whatsAppMessageSender,
@@ -41,6 +45,7 @@ public class ProcessIncomingMessageHandler
         _faqRepository = faqRepository;
         _leadRepository = leadRepository;
         _memberRepository = memberRepository;
+        _pendingAIReplyRepository = pendingAIReplyRepository;
         _languageDetector = languageDetector;
         _aiAssistantService = aiAssistantService;
         _whatsAppMessageSender = whatsAppMessageSender;
@@ -99,7 +104,13 @@ public class ProcessIncomingMessageHandler
             _logger.LogError(ex, "AI assistant failed to generate a reply for conversation {ConversationId}.", conversation.Id);
             conversation.EscalateToHuman();
             await PersistConversationAsync(conversation, isNewConversation, cancellationToken);
-            return Result.Failure("AI assistant unavailable.");
+
+            // Don't let the question vanish into the void: queue it so
+            // RetryPendingAIRepliesHandler tries again once the provider recovers.
+            var pendingReply = new PendingAIReply(conversation.Id, gym.Id, message.Text);
+            await _pendingAIReplyRepository.AddAsync(pendingReply, cancellationToken);
+
+            return Result.Failure("AI assistant unavailable - queued for retry.");
         }
 
         var outboundMessage = conversation.AddOutboundMessage(replyText, Domain.Enums.MessageOrigin.AiAssistant);

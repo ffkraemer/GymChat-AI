@@ -21,9 +21,9 @@ namespace GymChatAI.Infrastructure.DependencyInjection;
 public static class ServiceCollectionExtensions
 {
     /// <summary>
-    /// Registers persistence, WhatsApp, AI and the loyalty engine. Uses SQL Server (EF Core)
-    /// when ConnectionStrings:GymChatDb is configured; otherwise falls back to the original
-    /// in-memory store, so nothing changes for anyone who hasn't set up a database yet.
+    /// Registers persistence, WhatsApp, AI, the loyalty engine, and the pending-AI-reply
+    /// retry queue. Uses SQL Server (EF Core) when ConnectionStrings:GymChatDb is
+    /// configured; otherwise falls back to the original in-memory store.
     /// </summary>
     public static IServiceCollection AddGymChatInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
@@ -43,6 +43,7 @@ public static class ServiceCollectionExtensions
             services.AddScoped<IMemberRepository, EfMemberRepository>();
             services.AddScoped<ICampaignRepository, EfCampaignRepository>();
             services.AddScoped<ICampaignMessageRepository, EfCampaignMessageRepository>();
+            services.AddScoped<IPendingAIReplyRepository, EfPendingAIReplyRepository>();
         }
         else
         {
@@ -54,20 +55,22 @@ public static class ServiceCollectionExtensions
             services.AddSingleton<IMemberRepository, InMemoryMemberRepository>();
             services.AddSingleton<ICampaignRepository, InMemoryCampaignRepository>();
             services.AddSingleton<ICampaignMessageRepository, InMemoryCampaignMessageRepository>();
+            services.AddSingleton<InMemoryPendingAIReplyStore>();
+            services.AddSingleton<IPendingAIReplyRepository, InMemoryPendingAIReplyRepository>();
         }
 
         services.AddScoped<LoyaltyEngineHandler>();
         services.AddHostedService<LoyaltyEngineBackgroundService>();
+
+        services.AddScoped<RetryPendingAIRepliesHandler>();
+        services.AddHostedService<PendingAIReplyBackgroundService>();
 
         return services;
     }
 
     /// <summary>
     /// Registers ASP.NET Core Identity (operator/admin accounts for the Administration Portal)
-    /// with the built-in Bearer token scheme - no manual JWT signing/validation code needed.
-    /// Requires SQL Server (call alongside AddGymChatInfrastructure once a connection string
-    /// is configured): Identity needs a real, durable user store, so this is intentionally
-    /// NOT available in the in-memory persistence mode.
+    /// with the built-in Bearer token scheme. Requires SQL Server.
     /// </summary>
     public static IServiceCollection AddGymChatIdentity(this IServiceCollection services)
     {
@@ -83,7 +86,8 @@ public static class ServiceCollectionExtensions
             .AddEntityFrameworkStores<GymChatDbContext>();
 
         services.AddAuthorizationBuilder()
-            .AddPolicy(Policies.Admin, policy => policy.RequireRole(Roles.Admin, Roles.PlatformAdmin));
+            .AddPolicy(Policies.Admin, policy => policy.RequireRole(Roles.Admin, Roles.PlatformAdmin))
+            .AddPolicy(Policies.PlatformAdmin, policy => policy.RequireRole(Roles.PlatformAdmin));
 
         return services;
     }
@@ -99,7 +103,7 @@ public static class ServiceCollectionExtensions
 
         services.AddHttpClient<IWhatsAppMessageSender, WhatsAppCloudApiClient>();
 
-        // Three interchangeable implementations of the same port (IAiAssistantService).
+        // Three interchangeable implementations of the same port (IAIAssistantService).
         // The top-level "AiProvider" setting picks explicitly; falls back to auto-detecting
         // from whichever *Options:ApiKey is filled in (Gemini > OpenAI > Azure) otherwise.
         var provider = configuration["AiProvider"]?.Trim().ToLowerInvariant();
