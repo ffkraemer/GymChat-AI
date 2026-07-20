@@ -7,8 +7,9 @@ namespace GymChatAI.Application.Messaging;
 
 /// <summary>
 /// Orchestrates the end-to-end flow:
-/// receive message -> resolve gym/conversation -> detect language ->
-/// ground with FAQs -> ask the AI assistant -> persist -> send reply.
+/// receive message -> resolve gym/conversation -> [onboarding/preferences menu, if
+/// applicable] -> detect language -> ground with FAQs -> ask the AI assistant -> persist
+/// -> send reply.
 /// If the AI assistant fails, the message is queued as a PendingAIReply so
 /// RetryPendingAIRepliesHandler can try again later instead of it being lost.
 /// </summary>
@@ -26,6 +27,7 @@ public class ProcessIncomingMessageHandler
     private readonly ILanguageDetector _languageDetector;
     private readonly IAIAssistantService _aiAssistantService;
     private readonly IWhatsAppMessageSender _whatsAppMessageSender;
+    private readonly OnboardingFlowHandler _onboardingFlowHandler;
     private readonly ILogger<ProcessIncomingMessageHandler> _logger;
 
     public ProcessIncomingMessageHandler(
@@ -38,6 +40,7 @@ public class ProcessIncomingMessageHandler
         ILanguageDetector languageDetector,
         IAIAssistantService aiAssistantService,
         IWhatsAppMessageSender whatsAppMessageSender,
+        OnboardingFlowHandler onboardingFlowHandler,
         ILogger<ProcessIncomingMessageHandler> logger)
     {
         _gymRepository = gymRepository;
@@ -49,6 +52,7 @@ public class ProcessIncomingMessageHandler
         _languageDetector = languageDetector;
         _aiAssistantService = aiAssistantService;
         _whatsAppMessageSender = whatsAppMessageSender;
+        _onboardingFlowHandler = onboardingFlowHandler;
         _logger = logger;
     }
 
@@ -78,11 +82,38 @@ public class ProcessIncomingMessageHandler
             await EnsureLeadCapturedAsync(gym.Id, message, cancellationToken);
         }
 
-        // 4. Detect language and record the inbound message.
+        // 4. Brand new contact: lead with the onboarding menu instead of handing their
+        // first message straight to the AI - captures consent + preferences up front.
+        if (isNewConversation)
+        {
+            conversation.AddInboundMessage(GetLoggableContent(message), message.WhatsAppMessageId, Domain.Enums.Language.Unknown);
+            await _onboardingFlowHandler.StartOnboardingAsync(gym, conversation, cancellationToken);
+            await _conversationRepository.AddAsync(conversation, cancellationToken);
+            return Result.Success();
+        }
+
+        // 5. Mid-menu (a button/list reply is expected) - let the flow handler take it instead of the AI.
+        if (conversation.FlowStep != Domain.Enums.ConversationFlowStep.None)
+        {
+            conversation.AddInboundMessage(GetLoggableContent(message), message.WhatsAppMessageId, conversation.PreferredLanguage);
+            await _onboardingFlowHandler.TryHandleFlowMessageAsync(gym, conversation, message, cancellationToken);
+            await _conversationRepository.UpdateAsync(conversation, cancellationToken);
+            return Result.Success();
+        }
+
+        // 6. Anyone can revisit their notification preferences at any time with a keyword.
+        if (string.IsNullOrWhiteSpace(message.InteractiveReplyId) && OnboardingFlowHandler.IsPreferencesKeyword(message.Text))
+        {
+            conversation.AddInboundMessage(message.Text, message.WhatsAppMessageId, conversation.PreferredLanguage);
+            await _onboardingFlowHandler.RestartAsync(gym, conversation, cancellationToken);
+            await _conversationRepository.UpdateAsync(conversation, cancellationToken);
+            return Result.Success();
+        }
+
+        // 7. Ordinary message: detect language and record it, then hand off to the AI assistant.
         var language = await _languageDetector.DetectAsync(message.Text, cancellationToken);
         conversation.AddInboundMessage(message.Text, message.WhatsAppMessageId, language);
 
-        // 5. Ground the assistant with relevant FAQs.
         var relevantFaqs = await _faqRepository.SearchAsync(gym.Id, message.Text, MaxRelevantFaqs, cancellationToken);
 
         var context = new AIAssistantContext(
@@ -93,7 +124,6 @@ public class ProcessIncomingMessageHandler
                 .ToList(),
             RelevantFaqs: relevantFaqs.Select(f => (f.Question, f.Answer)).ToList());
 
-        // 6. Ask the AI assistant for a reply.
         string replyText;
         try
         {
@@ -103,7 +133,7 @@ public class ProcessIncomingMessageHandler
         {
             _logger.LogError(ex, "AI assistant failed to generate a reply for conversation {ConversationId}.", conversation.Id);
             conversation.EscalateToHuman();
-            await PersistConversationAsync(conversation, isNewConversation, cancellationToken);
+            await _conversationRepository.UpdateAsync(conversation, cancellationToken);
 
             // Don't let the question vanish into the void: queue it so
             // RetryPendingAIRepliesHandler tries again once the provider recovers.
@@ -115,7 +145,6 @@ public class ProcessIncomingMessageHandler
 
         var outboundMessage = conversation.AddOutboundMessage(replyText, Domain.Enums.MessageOrigin.AiAssistant);
 
-        // 7. Send the reply back through WhatsApp.
         try
         {
             var wamid = await _whatsAppMessageSender.SendTextMessageAsync(
@@ -128,16 +157,8 @@ public class ProcessIncomingMessageHandler
             outboundMessage.MarkFailed();
         }
 
-        await PersistConversationAsync(conversation, isNewConversation, cancellationToken);
+        await _conversationRepository.UpdateAsync(conversation, cancellationToken);
         return Result.Success();
-    }
-
-    private async Task PersistConversationAsync(Conversation conversation, bool isNew, CancellationToken cancellationToken)
-    {
-        if (isNew)
-            await _conversationRepository.AddAsync(conversation, cancellationToken);
-        else
-            await _conversationRepository.UpdateAsync(conversation, cancellationToken);
     }
 
     private async Task EnsureLeadCapturedAsync(Guid gymId, IncomingWhatsAppMessage message, CancellationToken cancellationToken)
@@ -151,4 +172,12 @@ public class ProcessIncomingMessageHandler
         var lead = new Lead(gymId, message.FromPhoneNumber, message.ContactName);
         await _leadRepository.AddAsync(lead, cancellationToken);
     }
+
+    /// <summary>
+    /// Message.Content can never be empty (a domain invariant), but a button/list tap
+    /// arrives with Text = "" - WhatsApp only sends the id of whichever option was chosen,
+    /// no free text. Falls back to a readable placeholder for the history in that case.
+    /// </summary>
+    private static string GetLoggableContent(IncomingWhatsAppMessage message) =>
+        !string.IsNullOrEmpty(message.Text) ? message.Text : $"[Menu: {message.InteractiveReplyId}]";
 }

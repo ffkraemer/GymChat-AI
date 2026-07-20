@@ -98,3 +98,28 @@ public enum PendingAIReplyStatus
     /// <summary>Gave up after the maximum number of attempts; the conversation stays escalated to a human.</summary>
     Abandoned = 3
 }
+
+/// <summary>Broad time-of-day window a member prefers for class suggestions.</summary>
+public enum NotificationTimeWindow
+{
+    Morning = 1,
+    Afternoon = 2,
+    Evening = 3
+}
+
+/// <summary>
+/// Where a conversation is in the guided WhatsApp menu flow (onboarding, then notification
+/// preferences). None means "ordinary conversation, hand messages to the AI assistant".
+/// Everything else means "the next inbound message is expected to be a button/list reply
+/// for this specific step", handled by OnboardingFlowHandler instead of the AI.
+/// </summary>
+public enum ConversationFlowStep
+{
+    None = 0,
+    AwaitingOnboardingConsent = 1,
+    AwaitingClassTypeSelection = 2,
+    AwaitingMoreClassTypesDecision = 3,
+    AwaitingDaySelection = 4,
+    AwaitingTimeWindowSelection = 5,
+    AwaitingMoreSlotsDecision = 6
+}

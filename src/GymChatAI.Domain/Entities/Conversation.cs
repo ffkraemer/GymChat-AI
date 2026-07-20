@@ -27,6 +27,21 @@ public class Conversation : Entity
 
     public DateTimeOffset LastMessageAtUtc { get; private set; } = DateTimeOffset.UtcNow;
 
+    /// <summary>
+    /// Where this conversation is in the guided WhatsApp menu (onboarding/preferences).
+    /// None means "ordinary conversation" - inbound messages go to the AI assistant as usual.
+    /// Anything else means the next inbound message is expected to be a button/list reply
+    /// for this step, and is handled by OnboardingFlowHandler instead.
+    /// </summary>
+    public ConversationFlowStep FlowStep { get; private set; } = ConversationFlowStep.None;
+
+    /// <summary>
+    /// Small scratch value for mid-flow state that doesn't deserve its own table - e.g. "the
+    /// day the member just picked, while we wait for them to pick the time window to pair it
+    /// with". Always cleared once the step that needed it completes.
+    /// </summary>
+    public string? PendingFlowData { get; private set; }
+
     public IReadOnlyCollection<Message> Messages => _messages.AsReadOnly();
 
     private Conversation() { }
@@ -84,6 +99,13 @@ public class Conversation : Entity
     }
 
     public void Close() => Status = ConversationStatus.Closed;
+
+    /// <summary>Advances (or ends, with ConversationFlowStep.None) the guided menu flow.</summary>
+    public void SetFlowStep(ConversationFlowStep step, string? pendingFlowData = null)
+    {
+        FlowStep = step;
+        PendingFlowData = pendingFlowData;
+    }
 
     public void LinkLead(Guid leadId) => LeadId = leadId;
 

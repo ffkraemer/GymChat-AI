@@ -28,6 +28,9 @@ public class GymChatDbContext : IdentityDbContext<ApplicationUser, IdentityRole<
     public DbSet<Campaign> Campaigns => Set<Campaign>();
     public DbSet<CampaignMessage> CampaignMessages => Set<CampaignMessage>();
     public DbSet<PendingAIReply> PendingAIReplies => Set<PendingAIReply>();
+    public DbSet<ClassType> ClassTypes => Set<ClassType>();
+    public DbSet<NotificationPreference> NotificationPreferences => Set<NotificationPreference>();
+    public DbSet<NotificationTimeSlot> NotificationTimeSlots => Set<NotificationTimeSlot>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

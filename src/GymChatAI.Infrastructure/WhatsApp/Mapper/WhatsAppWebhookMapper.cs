@@ -1,7 +1,7 @@
-using System.Globalization;
 using GymChatAI.Application.Messaging;
+using System.Globalization;
 
-namespace GymChatAI.Infrastructure.WhatsApp;
+namespace GymChatAI.Infrastructure.WhatsApp.Mapper;
 
 /// <summary>Translates WhatsApp Cloud API webhook payloads into Application-layer messages.</summary>
 public static class WhatsAppWebhookMapper
@@ -20,15 +20,34 @@ public static class WhatsAppWebhookMapper
 
                 foreach (var message in value.Messages)
                 {
-                    // POC scope: only free-text messages. Media/interactive types are ignored for now.
-                    if (message.Type != "text" || message.Text?.Body is null || message.From is null || message.Id is null)
-                        continue;
+                    if (message.From is null || message.Id is null) continue;
 
                     var contactName = value.Contacts?
                         .FirstOrDefault(c => c.WaId == message.From)?
                         .Profile?.Name;
 
                     var timestamp = ParseTimestamp(message.Timestamp);
+
+                    // A tapped button/list row: no free text, just the id of whichever
+                    // WhatsAppButtonOption/WhatsAppListRow was chosen.
+                    if (message.Type == "interactive" && message.Interactive is not null)
+                    {
+                        var replyId = message.Interactive.ButtonReply?.Id ?? message.Interactive.ListReply?.Id;
+                        if (replyId is null) continue;
+
+                        results.Add(new IncomingWhatsAppMessage(
+                            WhatsAppPhoneNumberId: value.Metadata.PhoneNumberId,
+                            FromPhoneNumber: message.From,
+                            ContactName: contactName,
+                            Text: string.Empty,
+                            WhatsAppMessageId: message.Id,
+                            TimestampUtc: timestamp,
+                            InteractiveReplyId: replyId));
+                        continue;
+                    }
+
+                    // Free-text messages. Other types (media, location, etc.) are ignored for now.
+                    if (message.Type != "text" || message.Text?.Body is null) continue;
 
                     results.Add(new IncomingWhatsAppMessage(
                         WhatsAppPhoneNumberId: value.Metadata.PhoneNumberId,

@@ -14,8 +14,8 @@ namespace GymChatAI.Infrastructure.WhatsApp;
 public class WhatsAppCloudApiClient : IWhatsAppMessageSender
 {
     private readonly HttpClient _httpClient;
-    private readonly WhatsAppOptions _options;
     private readonly ILogger<WhatsAppCloudApiClient> _logger;
+    private readonly WhatsAppOptions _options;
 
     public WhatsAppCloudApiClient(HttpClient httpClient, IOptions<WhatsAppOptions> options, ILogger<WhatsAppCloudApiClient> logger)
     {
@@ -30,14 +30,57 @@ public class WhatsAppCloudApiClient : IWhatsAppMessageSender
             _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _options.AccessToken);
     }
 
-    public async Task<string> SendTextMessageAsync(
+    public async Task<string> SendButtonMessageAsync(
         string fromPhoneNumberId,
+        string toPhoneNumber,
+        string bodyText,
+        IReadOnlyList<WhatsAppButtonOption> buttons,
+        CancellationToken cancellationToken = default)
+    {
+        if (buttons.Count is 0 or > 3)
+            throw new ArgumentException("WhatsApp button messages support between 1 and 3 buttons.", nameof(buttons));
+
+        var payload = SendButtonMessageRequest.Create(
+            toPhoneNumber, bodyText, buttons.Select(b => ButtonPayload.Create(b.Id, b.Title)).ToList());
+
+        return await PostAndExtractMessageIdAsync(fromPhoneNumberId, payload, toPhoneNumber, cancellationToken);
+    }
+
+    public async Task<string> SendListMessageAsync(
+        string fromPhoneNumberId,
+        string toPhoneNumber,
+        string bodyText,
+        string buttonText,
+        IReadOnlyList<WhatsAppListSection> sections,
+        CancellationToken cancellationToken = default)
+    {
+        var totalRows = sections.Sum(s => s.Rows.Count);
+        if (totalRows is 0 or > 10)
+            throw new ArgumentException("WhatsApp list messages support between 1 and 10 rows in total.", nameof(sections));
+
+        var sectionPayloads = sections
+            .Select(s => new ListSectionPayload(
+                s.Title,
+                s.Rows.Select(r => new ListRowPayload(r.Id, r.Title, r.Description)).ToList()))
+            .ToList();
+
+        var payload = SendListMessageRequest.Create(toPhoneNumber, bodyText, buttonText, sectionPayloads);
+        return await PostAndExtractMessageIdAsync(fromPhoneNumberId, payload, toPhoneNumber, cancellationToken);
+    }
+
+    public async Task<string> SendTextMessageAsync(
+                string fromPhoneNumberId,
         string toPhoneNumber,
         string text,
         CancellationToken cancellationToken = default)
     {
         var payload = SendTextMessageRequest.Create(toPhoneNumber, text);
+        return await PostAndExtractMessageIdAsync(fromPhoneNumberId, payload, toPhoneNumber, cancellationToken);
+    }
 
+    private async Task<string> PostAndExtractMessageIdAsync<TPayload>(
+        string fromPhoneNumberId, TPayload payload, string toPhoneNumber, CancellationToken cancellationToken)
+    {
         var response = await _httpClient.PostAsJsonAsync($"{fromPhoneNumberId}/messages", payload, cancellationToken);
 
         if (!response.IsSuccessStatusCode)

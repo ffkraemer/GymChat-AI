@@ -2,8 +2,6 @@ using System.Text.Json.Serialization;
 
 namespace GymChatAI.Infrastructure.WhatsApp;
 
-
-
 public record WhatsAppChange(
     [property: JsonPropertyName("value")] WhatsAppChangeValue? Value,
     [property: JsonPropertyName("field")] string? Field);
@@ -14,6 +12,10 @@ public record WhatsAppChangeValue(
     [property: JsonPropertyName("contacts")] List<WhatsAppContact>? Contacts,
     [property: JsonPropertyName("messages")] List<WhatsAppInboundMessage>? Messages,
     [property: JsonPropertyName("statuses")] List<WhatsAppStatus>? Statuses);
+
+public record WhatsAppMetadata(
+    [property: JsonPropertyName("display_phone_number")] string? DisplayPhoneNumber,
+    [property: JsonPropertyName("phone_number_id")] string? PhoneNumberId);
 
 public record WhatsAppContact(
     [property: JsonPropertyName("profile")] WhatsAppProfile? Profile,
@@ -26,7 +28,8 @@ public record WhatsAppInboundMessage(
     [property: JsonPropertyName("id")] string? Id,
     [property: JsonPropertyName("timestamp")] string? Timestamp,
     [property: JsonPropertyName("type")] string? Type,
-    [property: JsonPropertyName("text")] WhatsAppTextBody? Text);
+    [property: JsonPropertyName("text")] WhatsAppTextBody? Text,
+    [property: JsonPropertyName("interactive")] WhatsAppInteractivePayload? Interactive);
 
 public record WhatsAppTextBody([property: JsonPropertyName("body")] string? Body);
 

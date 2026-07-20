@@ -1,8 +1,9 @@
-using System.Text.Json;
 using GymChatAI.Application.Messaging;
 using GymChatAI.Infrastructure.Options;
 using GymChatAI.Infrastructure.WhatsApp;
+using GymChatAI.Infrastructure.WhatsApp.Mapper;
 using Microsoft.Extensions.Options;
+using System.Text.Json;
 
 namespace GymChatAI.Api.Endpoints;
 

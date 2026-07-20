@@ -3,7 +3,6 @@ using System.Text.Json.Serialization;
 namespace GymChatAI.Infrastructure.WhatsApp;
 
 // ---- Outbound (send message) ----
-
 internal record SendTextMessageRequest(
     [property: JsonPropertyName("messaging_product")] string MessagingProduct,
     [property: JsonPropertyName("to")] string To,

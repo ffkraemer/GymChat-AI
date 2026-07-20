@@ -4,6 +4,7 @@ using GymChatAI.Infrastructure.Persistence.EfCore;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace GymChatAI.Infrastructure.Migrations
 {
     [DbContext(typeof(GymChatDbContext))]
-    partial class GymChatDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260721082820_Create_ClassTypes_NotificationPreferences_NotificationTimeSlots_Add_Column_Conversations")]
+    partial class Create_ClassTypes_NotificationPreferences_NotificationTimeSlots_Add_Column_Conversations
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -907,7 +910,7 @@ namespace GymChatAI.Infrastructure.Migrations
                     b.HasOne("GymChatAI.Domain.Entities.NotificationPreference", null)
                         .WithMany("Slots")
                         .HasForeignKey("NotificationPreferenceId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
                 });
 

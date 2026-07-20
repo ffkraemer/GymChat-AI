@@ -21,7 +21,7 @@ if (usingSqlServer)
     builder.Services.AddGymChatIdentity();
 }
 
-builder.Services.AddCors(options =>          // <-- NOVO
+builder.Services.AddCors(options =>
 {
     options.AddPolicy("AdminPortal", policy =>
     {
@@ -85,6 +85,7 @@ app.MapConversationEndpoints(usingSqlServer);
 app.MapGymEndpoints(usingSqlServer);
 app.MapCampaignEndpoints(usingSqlServer);
 app.MapMemberEndpoints(usingSqlServer);
+app.MapClassTypeEndpoints(usingSqlServer);
 app.MapCredentialHealthEndpoints();
 
 app.Run();

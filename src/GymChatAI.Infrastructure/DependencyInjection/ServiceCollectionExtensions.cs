@@ -44,6 +44,8 @@ public static class ServiceCollectionExtensions
             services.AddScoped<ICampaignRepository, EfCampaignRepository>();
             services.AddScoped<ICampaignMessageRepository, EfCampaignMessageRepository>();
             services.AddScoped<IPendingAIReplyRepository, EfPendingAIReplyRepository>();
+            services.AddScoped<IClassTypeRepository, EfClassTypeRepository>();
+            services.AddScoped<INotificationPreferenceRepository, EfNotificationPreferenceRepository>();
         }
         else
         {
@@ -57,6 +59,10 @@ public static class ServiceCollectionExtensions
             services.AddSingleton<ICampaignMessageRepository, InMemoryCampaignMessageRepository>();
             services.AddSingleton<InMemoryPendingAIReplyStore>();
             services.AddSingleton<IPendingAIReplyRepository, InMemoryPendingAIReplyRepository>();
+            services.AddSingleton<InMemoryClassTypeStore>();
+            services.AddSingleton<IClassTypeRepository, InMemoryClassTypeRepository>();
+            services.AddSingleton<InMemoryNotificationPreferenceStore>();
+            services.AddSingleton<INotificationPreferenceRepository, InMemoryNotificationPreferenceRepository>();
         }
 
         services.AddScoped<LoyaltyEngineHandler>();
@@ -64,6 +70,8 @@ public static class ServiceCollectionExtensions
 
         services.AddScoped<RetryPendingAIRepliesHandler>();
         services.AddHostedService<PendingAIReplyBackgroundService>();
+
+        services.AddScoped<OnboardingFlowHandler>();
 
         return services;
     }

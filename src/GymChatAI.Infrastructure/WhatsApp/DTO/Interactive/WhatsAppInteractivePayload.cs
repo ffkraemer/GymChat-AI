@@ -1,0 +1,14 @@
+using System.Text.Json.Serialization;
+
+namespace GymChatAI.Infrastructure.WhatsApp;
+
+// ---- Inbound: button_reply / list_reply (parsed from the webhook payload) ----
+
+public record WhatsAppInteractivePayload(
+    [property: JsonPropertyName("type")] string? Type,
+    [property: JsonPropertyName("button_reply")] WhatsAppInteractiveReply? ButtonReply,
+    [property: JsonPropertyName("list_reply")] WhatsAppInteractiveReply? ListReply);
+
+public record WhatsAppInteractiveReply(
+    [property: JsonPropertyName("id")] string? Id,
+    [property: JsonPropertyName("title")] string? Title);

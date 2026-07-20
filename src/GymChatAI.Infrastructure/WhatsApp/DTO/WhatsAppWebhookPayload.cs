@@ -8,7 +8,6 @@ namespace GymChatAI.Infrastructure.WhatsApp;
 public record WhatsAppWebhookPayload(
     [property: JsonPropertyName("object")] string? Object,
     [property: JsonPropertyName("entry")] List<WhatsAppEntry>? Entry);
-
 public record WhatsAppEntry(
     [property: JsonPropertyName("id")] string? Id,
     [property: JsonPropertyName("changes")] List<WhatsAppChange>? Changes);
