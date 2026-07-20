@@ -33,11 +33,18 @@ public interface IConversationRepository
 
 public interface IFaqRepository
 {
+    Task<Faq?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<Faq>> GetActiveByGymAsync(Guid gymId, CancellationToken cancellationToken = default);
+
+    /// <summary>Includes inactive FAQs too - used by the Administration Portal so operators can find and reactivate them.</summary>
+    Task<IReadOnlyList<Faq>> GetAllByGymAsync(Guid gymId, CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<Faq>> SearchAsync(Guid gymId, string query, int maxResults, CancellationToken cancellationToken = default);
 
     Task AddAsync(Faq faq, CancellationToken cancellationToken = default);
+
+    Task UpdateAsync(Faq faq, CancellationToken cancellationToken = default);
 }
 
 public interface ILeadRepository

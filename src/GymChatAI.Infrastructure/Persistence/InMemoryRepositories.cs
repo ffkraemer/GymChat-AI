@@ -103,9 +103,18 @@ public class InMemoryFaqRepository : IFaqRepository
 
     public InMemoryFaqRepository(InMemoryDataStore store) => _store = store;
 
+    public Task<Faq?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) =>
+        Task.FromResult(_store.Faqs.GetValueOrDefault(id));
+
     public Task<IReadOnlyList<Faq>> GetActiveByGymAsync(Guid gymId, CancellationToken cancellationToken = default)
     {
         IReadOnlyList<Faq> result = _store.Faqs.Values.Where(f => f.GymId == gymId && f.IsActive).ToList();
+        return Task.FromResult(result);
+    }
+
+    public Task<IReadOnlyList<Faq>> GetAllByGymAsync(Guid gymId, CancellationToken cancellationToken = default)
+    {
+        IReadOnlyList<Faq> result = _store.Faqs.Values.Where(f => f.GymId == gymId).ToList();
         return Task.FromResult(result);
     }
 
@@ -149,6 +158,12 @@ public class InMemoryFaqRepository : IFaqRepository
     }
 
     public Task AddAsync(Faq faq, CancellationToken cancellationToken = default)
+    {
+        _store.Faqs[faq.Id] = faq;
+        return Task.CompletedTask;
+    }
+
+    public Task UpdateAsync(Faq faq, CancellationToken cancellationToken = default)
     {
         _store.Faqs[faq.Id] = faq;
         return Task.CompletedTask;

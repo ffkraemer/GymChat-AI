@@ -10,9 +10,17 @@ public class EfFaqRepository : IFaqRepository
 
     public EfFaqRepository(GymChatDbContext context) => _context = context;
 
+    public Task<Faq?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) =>
+        _context.Faqs.FirstOrDefaultAsync(f => f.Id == id, cancellationToken);
+
     public async Task<IReadOnlyList<Faq>> GetActiveByGymAsync(Guid gymId, CancellationToken cancellationToken = default) =>
         await _context.Faqs
             .Where(f => f.GymId == gymId && f.IsActive)
+            .ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<Faq>> GetAllByGymAsync(Guid gymId, CancellationToken cancellationToken = default) =>
+        await _context.Faqs
+            .Where(f => f.GymId == gymId)
             .ToListAsync(cancellationToken);
 
     public async Task<IReadOnlyList<Faq>> SearchAsync(Guid gymId, string query, int maxResults, CancellationToken cancellationToken = default)
@@ -43,6 +51,14 @@ public class EfFaqRepository : IFaqRepository
     public async Task AddAsync(Faq faq, CancellationToken cancellationToken = default)
     {
         _context.Faqs.Add(faq);
+        await _context.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task UpdateAsync(Faq faq, CancellationToken cancellationToken = default)
+    {
+        if (_context.Entry(faq).State == EntityState.Detached)
+            _context.Faqs.Update(faq);
+
         await _context.SaveChangesAsync(cancellationToken);
     }
 }
