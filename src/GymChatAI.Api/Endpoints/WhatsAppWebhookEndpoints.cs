@@ -1,9 +1,11 @@
+using System.Text.Json;
+using GymChatAI.Application.Abstractions;
 using GymChatAI.Application.Messaging;
+using GymChatAI.Domain.Entities;
 using GymChatAI.Infrastructure.Options;
 using GymChatAI.Infrastructure.WhatsApp;
 using GymChatAI.Infrastructure.WhatsApp.Mapper;
 using Microsoft.Extensions.Options;
-using System.Text.Json;
 
 namespace GymChatAI.Api.Endpoints;
 
@@ -31,6 +33,8 @@ public static class WhatsAppWebhookEndpoints
         group.MapPost("/", async (
             HttpRequest request,
             ProcessIncomingMessageHandler handler,
+            IGymRepository gymRepository,
+            IWhatsAppDeliveryFailureRepository deliveryFailureRepository,
             ILogger<Program> logger,
             CancellationToken cancellationToken) =>
         {
@@ -51,13 +55,40 @@ public static class WhatsAppWebhookEndpoints
 
             var incomingMessages = WhatsAppWebhookMapper.ExtractIncomingMessages(payload);
 
-            // WhatsApp expects a fast 200 OK; for the POC we process inline, but this is the
-            // natural seam to push onto a background queue (e.g. Azure Service Bus) in the MVP phase.
+            // Deliberately CancellationToken.None here, not the request's own token: message
+            // processing (in particular, the AI call) must run to completion regardless of
+            // what happens to the inbound HTTP connection from Meta/ngrok. Tying it to
+            // HttpContext.RequestAborted caused in-flight AI calls to be killed mid-request
+            // whenever that connection hiccuped or Meta's own webhook timeout kicked in -
+            // even though the call itself was perfectly healthy.
             foreach (var message in incomingMessages)
             {
-                var result = await handler.HandleAsync(message, cancellationToken);
+                var result = await handler.HandleAsync(message, CancellationToken.None);
                 if (!result.IsSuccess)
                     logger.LogWarning("Failed to process message {WhatsAppMessageId}: {Error}", message.WhatsAppMessageId, result.Error);
+            }
+
+            // Delivery failures Meta reports after the fact (see the Compliance Dashboard's
+            // "Falhas registadas na Meta" section) - a message we successfully sent earlier
+            // can still fail to actually reach the recipient.
+            var deliveryFailures = WhatsAppWebhookMapper.ExtractDeliveryFailures(payload);
+            foreach (var failureEvent in deliveryFailures)
+            {
+                var gym = await gymRepository.GetByWhatsAppPhoneNumberIdAsync(failureEvent.WhatsAppPhoneNumberId, CancellationToken.None);
+                if (gym is null)
+                {
+                    logger.LogWarning("Delivery failure reported for unknown WhatsApp phone number id {PhoneNumberId}.", failureEvent.WhatsAppPhoneNumberId);
+                    continue;
+                }
+
+                var failure = new WhatsAppDeliveryFailure(
+                    gym.Id, failureEvent.WhatsAppMessageId, failureEvent.RecipientPhoneNumber,
+                    failureEvent.ErrorCode, failureEvent.ErrorMessage);
+
+                await deliveryFailureRepository.AddAsync(failure, CancellationToken.None);
+                logger.LogWarning(
+                    "Meta reported a delivery failure for message {WhatsAppMessageId} to {RecipientPhoneNumber}: {ErrorMessage}",
+                    failureEvent.WhatsAppMessageId, failureEvent.RecipientPhoneNumber, failureEvent.ErrorMessage);
             }
 
             return Results.Ok();

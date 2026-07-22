@@ -1,11 +1,44 @@
-using GymChatAI.Application.Messaging;
 using System.Globalization;
+using GymChatAI.Application.Messaging;
 
 namespace GymChatAI.Infrastructure.WhatsApp.Mapper;
 
 /// <summary>Translates WhatsApp Cloud API webhook payloads into Application-layer messages.</summary>
 public static class WhatsAppWebhookMapper
 {
+    /// <summary>Extracts "status": "failed" delivery reports - Meta telling us, after accepting a message, that it couldn't actually be delivered.</summary>
+    public static IReadOnlyList<WhatsAppDeliveryFailureEvent> ExtractDeliveryFailures(WhatsAppWebhookPayload payload)
+    {
+        var results = new List<WhatsAppDeliveryFailureEvent>();
+
+        foreach (var entry in payload.Entry ?? Enumerable.Empty<WhatsAppEntry>())
+        {
+            foreach (var change in entry.Changes ?? Enumerable.Empty<WhatsAppChange>())
+            {
+                var value = change.Value;
+                if (value?.Statuses is null || value.Metadata?.PhoneNumberId is null)
+                    continue;
+
+                foreach (var status in value.Statuses)
+                {
+                    if (status.Status != "failed" || status.Id is null || status.RecipientId is null)
+                        continue;
+
+                    var firstError = status.Errors?.FirstOrDefault();
+
+                    results.Add(new WhatsAppDeliveryFailureEvent(
+                        WhatsAppPhoneNumberId: value.Metadata.PhoneNumberId,
+                        WhatsAppMessageId: status.Id,
+                        RecipientPhoneNumber: status.RecipientId,
+                        ErrorCode: firstError?.Code?.ToString(),
+                        ErrorMessage: firstError?.Message ?? firstError?.Title ?? "Delivery failed (no further detail provided)."));
+                }
+            }
+        }
+
+        return results;
+    }
+
     public static IReadOnlyList<IncomingWhatsAppMessage> ExtractIncomingMessages(WhatsAppWebhookPayload payload)
     {
         var results = new List<IncomingWhatsAppMessage>();

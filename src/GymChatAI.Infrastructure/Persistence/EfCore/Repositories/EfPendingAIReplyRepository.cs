@@ -17,6 +17,12 @@ public class EfPendingAIReplyRepository : IPendingAIReplyRepository
             .OrderBy(p => p.CreatedAtUtc)
             .ToListAsync(cancellationToken);
 
+    public async Task<IReadOnlyList<PendingAIReply>> GetRecentByGymAsync(Guid gymId, DateTimeOffset sinceUtc, CancellationToken cancellationToken = default) =>
+        await _context.PendingAIReplies
+            .Where(p => p.GymId == gymId && p.CreatedAtUtc >= sinceUtc)
+            .OrderByDescending(p => p.CreatedAtUtc)
+            .ToListAsync(cancellationToken);
+
     public async Task AddAsync(PendingAIReply pendingReply, CancellationToken cancellationToken = default)
     {
         _context.PendingAIReplies.Add(pendingReply);

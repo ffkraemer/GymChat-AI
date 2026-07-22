@@ -36,4 +36,5 @@ public record WhatsAppTextBody([property: JsonPropertyName("body")] string? Body
 public record WhatsAppStatus(
     [property: JsonPropertyName("id")] string? Id,
     [property: JsonPropertyName("status")] string? Status,
-    [property: JsonPropertyName("recipient_id")] string? RecipientId);
+    [property: JsonPropertyName("recipient_id")] string? RecipientId,
+    [property: JsonPropertyName("errors")] List<WhatsAppStatusError>? Errors);

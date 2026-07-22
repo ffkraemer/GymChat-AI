@@ -25,6 +25,20 @@ public static class ComplianceEndpoints
         });
         if (requireAuth) getSnapshot.AddEndpointFilter<GymScopeFilter>();
 
+        var getFailures = group.MapGet("/{gymId:guid}/failures", async (
+            Guid gymId,
+            IGymRepository gymRepository,
+            ComplianceDashboardHandler handler,
+            CancellationToken ct) =>
+        {
+            var gym = await gymRepository.GetByIdAsync(gymId, ct);
+            if (gym is null) return Results.NotFound();
+
+            var failures = await handler.GetFailuresAsync(gymId, ct);
+            return Results.Ok(failures);
+        });
+        if (requireAuth) getFailures.AddEndpointFilter<GymScopeFilter>();
+
         return app;
     }
 }

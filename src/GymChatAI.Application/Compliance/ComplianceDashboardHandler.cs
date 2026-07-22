@@ -14,6 +14,17 @@ public record ComplianceSnapshot(
     IReadOnlyList<ErrorCodeBreakdown> TopErrorCodes,
     IReadOnlyList<string> RiskFlags);
 
+public record MetaDeliveryFailureItem(string WhatsAppMessageId, string RecipientPhoneNumber, string? ErrorCode, string ErrorMessage, DateTimeOffset OccurredAtUtc);
+
+public record ApiCallFailureItem(string Endpoint, int HttpStatusCode, string? ErrorCode, string ErrorMessage, DateTimeOffset OccurredAtUtc);
+
+public record AiFailureItem(Guid ConversationId, string UserMessage, int Attempts, string? LastError, string Status, DateTimeOffset? LastAttemptAtUtc);
+
+public record FailuresSnapshot(
+    IReadOnlyList<MetaDeliveryFailureItem> MetaDeliveryFailures,
+    IReadOnlyList<ApiCallFailureItem> ApiCallFailures,
+    IReadOnlyList<AiFailureItem> AiFailures);
+
 /// <summary>
 /// Builds the data behind the Administration Portal's Compliance Dashboard: live quality
 /// rating + messaging limit from Meta, our own recent-error history, and a set of risk-flag
@@ -27,11 +38,19 @@ public class ComplianceDashboardHandler
 
     private readonly IWhatsAppComplianceClient _complianceClient;
     private readonly IWhatsAppApiErrorRepository _errorRepository;
+    private readonly IWhatsAppDeliveryFailureRepository _deliveryFailureRepository;
+    private readonly IPendingAIReplyRepository _pendingAIReplyRepository;
 
-    public ComplianceDashboardHandler(IWhatsAppComplianceClient complianceClient, IWhatsAppApiErrorRepository errorRepository)
+    public ComplianceDashboardHandler(
+        IWhatsAppComplianceClient complianceClient,
+        IWhatsAppApiErrorRepository errorRepository,
+        IWhatsAppDeliveryFailureRepository deliveryFailureRepository,
+        IPendingAIReplyRepository pendingAIReplyRepository)
     {
         _complianceClient = complianceClient;
         _errorRepository = errorRepository;
+        _deliveryFailureRepository = deliveryFailureRepository;
+        _pendingAIReplyRepository = pendingAIReplyRepository;
     }
 
     public async Task<ComplianceSnapshot> GetSnapshotAsync(Gym gym, CancellationToken cancellationToken = default)
@@ -61,6 +80,25 @@ public class ComplianceDashboardHandler
             errors7d.Count,
             topErrorCodes,
             riskFlags);
+    }
+
+    /// <summary>
+    /// The three failure categories the dashboard shows separately:
+    /// Meta-reported delivery failures (via the status webhook), our own API call failures,
+    /// and AI failures - each tells a different part of the reliability story.
+    /// </summary>
+    public async Task<FailuresSnapshot> GetFailuresAsync(Guid gymId, CancellationToken cancellationToken = default)
+    {
+        var since = DateTimeOffset.UtcNow.AddDays(-7);
+
+        var deliveryFailures = await _deliveryFailureRepository.GetRecentByGymAsync(gymId, since, cancellationToken);
+        var apiErrors = await _errorRepository.GetRecentByGymAsync(gymId, since, cancellationToken);
+        var aiFailures = await _pendingAIReplyRepository.GetRecentByGymAsync(gymId, since, cancellationToken);
+
+        return new FailuresSnapshot(
+            deliveryFailures.Select(f => new MetaDeliveryFailureItem(f.WhatsAppMessageId, f.RecipientPhoneNumber, f.ErrorCode, f.ErrorMessage, f.CreatedAtUtc)).ToList(),
+            apiErrors.Select(e => new ApiCallFailureItem(e.Endpoint, e.HttpStatusCode, e.ErrorCode, e.ErrorMessage, e.CreatedAtUtc)).ToList(),
+            aiFailures.Select(p => new AiFailureItem(p.ConversationId, p.UserMessage, p.Attempts, p.LastError, p.Status.ToString(), p.LastAttemptAtUtc)).ToList());
     }
 
     private static List<string> BuildRiskFlags(

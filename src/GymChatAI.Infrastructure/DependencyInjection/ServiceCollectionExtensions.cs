@@ -49,6 +49,7 @@ public static class ServiceCollectionExtensions
             services.AddScoped<IClassTypeRepository, EfClassTypeRepository>();
             services.AddScoped<INotificationPreferenceRepository, EfNotificationPreferenceRepository>();
             services.AddScoped<IWhatsAppApiErrorRepository, EfWhatsAppApiErrorRepository>();
+            services.AddScoped<IWhatsAppDeliveryFailureRepository, EfWhatsAppDeliveryFailureRepository>();
         }
         else
         {
@@ -68,6 +69,8 @@ public static class ServiceCollectionExtensions
             services.AddSingleton<INotificationPreferenceRepository, InMemoryNotificationPreferenceRepository>();
             services.AddSingleton<InMemoryWhatsAppApiErrorStore>();
             services.AddSingleton<IWhatsAppApiErrorRepository, InMemoryWhatsAppApiErrorRepository>();
+            services.AddSingleton<InMemoryWhatsAppDeliveryFailureStore>();
+            services.AddSingleton<IWhatsAppDeliveryFailureRepository, InMemoryWhatsAppDeliveryFailureRepository>();
         }
 
         services.AddScoped<LoyaltyEngineHandler>();

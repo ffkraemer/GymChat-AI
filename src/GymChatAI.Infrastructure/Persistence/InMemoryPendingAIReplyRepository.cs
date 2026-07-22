@@ -31,6 +31,16 @@ public class InMemoryPendingAIReplyRepository : IPendingAIReplyRepository
         return Task.FromResult(result);
     }
 
+    public Task<IReadOnlyList<PendingAIReply>> GetRecentByGymAsync(Guid gymId, DateTimeOffset sinceUtc, CancellationToken cancellationToken = default)
+    {
+        IReadOnlyList<PendingAIReply> result = _store.Items.Values
+            .Where(p => p.GymId == gymId && p.CreatedAtUtc >= sinceUtc)
+            .OrderByDescending(p => p.CreatedAtUtc)
+            .ToList();
+
+        return Task.FromResult(result);
+    }
+
     public Task AddAsync(PendingAIReply pendingReply, CancellationToken cancellationToken = default)
     {
         _store.Items[pendingReply.Id] = pendingReply;
