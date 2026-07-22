@@ -33,6 +33,7 @@ public class GymChatDbContext : IdentityDbContext<ApplicationUser, IdentityRole<
     public DbSet<NotificationTimeSlot> NotificationTimeSlots => Set<NotificationTimeSlot>();
     public DbSet<WhatsAppApiError> WhatsAppApiErrors => Set<WhatsAppApiError>();
     public DbSet<WhatsAppDeliveryFailure> WhatsAppDeliveryFailures => Set<WhatsAppDeliveryFailure>();
+    public DbSet<WhatsAppMessageTemplate> WhatsAppMessageTemplates => Set<WhatsAppMessageTemplate>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

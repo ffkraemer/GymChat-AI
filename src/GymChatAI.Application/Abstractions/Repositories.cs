@@ -13,6 +13,8 @@ public interface IGymRepository
     Task<IReadOnlyList<Gym>> GetAllActiveAsync(CancellationToken cancellationToken = default);
 
     Task AddAsync(Gym gym, CancellationToken cancellationToken = default);
+
+    Task UpdateAsync(Gym gym, CancellationToken cancellationToken = default);
 }
 
 public interface IConversationRepository

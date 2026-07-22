@@ -24,4 +24,12 @@ public class EfGymRepository : IGymRepository
         _context.Gyms.Add(gym);
         await _context.SaveChangesAsync(cancellationToken);
     }
+
+    public async Task UpdateAsync(Gym gym, CancellationToken cancellationToken = default)
+    {
+        if (_context.Entry(gym).State == EntityState.Detached)
+            _context.Gyms.Update(gym);
+
+        await _context.SaveChangesAsync(cancellationToken);
+    }
 }

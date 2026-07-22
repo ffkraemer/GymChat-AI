@@ -2,6 +2,7 @@ using GymChatAI.Application.Abstractions;
 using GymChatAI.Application.Compliance;
 using GymChatAI.Application.Loyalty;
 using GymChatAI.Application.Messaging;
+using GymChatAI.Application.Templates;
 using GymChatAI.Infrastructure.AI;
 using GymChatAI.Infrastructure.BackgroundServices;
 using GymChatAI.Infrastructure.Identity;
@@ -50,6 +51,7 @@ public static class ServiceCollectionExtensions
             services.AddScoped<INotificationPreferenceRepository, EfNotificationPreferenceRepository>();
             services.AddScoped<IWhatsAppApiErrorRepository, EfWhatsAppApiErrorRepository>();
             services.AddScoped<IWhatsAppDeliveryFailureRepository, EfWhatsAppDeliveryFailureRepository>();
+            services.AddScoped<IWhatsAppMessageTemplateRepository, EfWhatsAppMessageTemplateRepository>();
         }
         else
         {
@@ -71,6 +73,8 @@ public static class ServiceCollectionExtensions
             services.AddSingleton<IWhatsAppApiErrorRepository, InMemoryWhatsAppApiErrorRepository>();
             services.AddSingleton<InMemoryWhatsAppDeliveryFailureStore>();
             services.AddSingleton<IWhatsAppDeliveryFailureRepository, InMemoryWhatsAppDeliveryFailureRepository>();
+            services.AddSingleton<InMemoryWhatsAppMessageTemplateStore>();
+            services.AddSingleton<IWhatsAppMessageTemplateRepository, InMemoryWhatsAppMessageTemplateRepository>();
         }
 
         services.AddScoped<LoyaltyEngineHandler>();
@@ -120,6 +124,11 @@ public static class ServiceCollectionExtensions
         services.AddHttpClient<IWhatsAppMessageSender, WhatsAppCloudApiClient>();
         services.AddHttpClient<IWhatsAppComplianceClient, WhatsAppComplianceClient>();
         services.AddScoped<ComplianceDashboardHandler>();
+
+        services.AddHttpClient<IWhatsAppTemplateManagementClient, WhatsAppTemplateManagementClient>();
+        services.AddScoped<WhatsAppTemplateHandler>();
+
+        services.AddHttpClient<IWhatsAppWabaAdminClient, WhatsAppWabaAdminClient>();
 
         // Three interchangeable implementations of the same port (IAIAssistantService).
         // The top-level "AiProvider" setting picks explicitly; falls back to auto-detecting

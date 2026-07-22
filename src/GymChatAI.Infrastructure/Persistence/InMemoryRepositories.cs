@@ -44,6 +44,12 @@ public class InMemoryGymRepository : IGymRepository
         _store.Gyms[gym.Id] = gym;
         return Task.CompletedTask;
     }
+
+    public Task UpdateAsync(Gym gym, CancellationToken cancellationToken = default)
+    {
+        _store.Gyms[gym.Id] = gym;
+        return Task.CompletedTask;
+    }
 }
 
 public class InMemoryConversationRepository : IConversationRepository

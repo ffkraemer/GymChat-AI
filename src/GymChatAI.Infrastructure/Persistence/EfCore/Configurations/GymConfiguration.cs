@@ -14,6 +14,7 @@ public class GymConfiguration : IEntityTypeConfiguration<Gym>
         builder.Property(g => g.Name).IsRequired().HasMaxLength(200);
         builder.Property(g => g.WhatsAppPhoneNumberId).IsRequired().HasMaxLength(64);
         builder.Property(g => g.WhatsAppDisplayPhoneNumber).HasMaxLength(32);
+        builder.Property(g => g.WhatsAppBusinessAccountId).HasMaxLength(64);
         builder.Property(g => g.DefaultLanguage).HasConversion<string>().HasMaxLength(20);
         builder.Property(g => g.IsActive).IsRequired();
 
