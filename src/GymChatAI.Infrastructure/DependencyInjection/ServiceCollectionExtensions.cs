@@ -1,4 +1,5 @@
 using GymChatAI.Application.Abstractions;
+using GymChatAI.Application.Compliance;
 using GymChatAI.Application.Loyalty;
 using GymChatAI.Application.Messaging;
 using GymChatAI.Infrastructure.AI;
@@ -21,9 +22,10 @@ namespace GymChatAI.Infrastructure.DependencyInjection;
 public static class ServiceCollectionExtensions
 {
     /// <summary>
-    /// Registers persistence, WhatsApp, AI, the loyalty engine, and the pending-AI-reply
-    /// retry queue. Uses SQL Server (EF Core) when ConnectionStrings:GymChatDb is
-    /// configured; otherwise falls back to the original in-memory store.
+    /// Registers persistence, WhatsApp, AI, the loyalty engine, the pending-AI-reply retry
+    /// queue, and the compliance dashboard. Uses SQL Server (EF Core) when
+    /// ConnectionStrings:GymChatDb is configured; otherwise falls back to the original
+    /// in-memory store.
     /// </summary>
     public static IServiceCollection AddGymChatInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
@@ -46,6 +48,7 @@ public static class ServiceCollectionExtensions
             services.AddScoped<IPendingAIReplyRepository, EfPendingAIReplyRepository>();
             services.AddScoped<IClassTypeRepository, EfClassTypeRepository>();
             services.AddScoped<INotificationPreferenceRepository, EfNotificationPreferenceRepository>();
+            services.AddScoped<IWhatsAppApiErrorRepository, EfWhatsAppApiErrorRepository>();
         }
         else
         {
@@ -63,6 +66,8 @@ public static class ServiceCollectionExtensions
             services.AddSingleton<IClassTypeRepository, InMemoryClassTypeRepository>();
             services.AddSingleton<InMemoryNotificationPreferenceStore>();
             services.AddSingleton<INotificationPreferenceRepository, InMemoryNotificationPreferenceRepository>();
+            services.AddSingleton<InMemoryWhatsAppApiErrorStore>();
+            services.AddSingleton<IWhatsAppApiErrorRepository, InMemoryWhatsAppApiErrorRepository>();
         }
 
         services.AddScoped<LoyaltyEngineHandler>();
@@ -110,6 +115,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ILanguageDetector, HeuristicLanguageDetector>();
 
         services.AddHttpClient<IWhatsAppMessageSender, WhatsAppCloudApiClient>();
+        services.AddHttpClient<IWhatsAppComplianceClient, WhatsAppComplianceClient>();
+        services.AddScoped<ComplianceDashboardHandler>();
 
         // Three interchangeable implementations of the same port (IAIAssistantService).
         // The top-level "AiProvider" setting picks explicitly; falls back to auto-detecting

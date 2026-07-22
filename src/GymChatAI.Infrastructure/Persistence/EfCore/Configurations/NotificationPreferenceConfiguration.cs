@@ -27,10 +27,13 @@ public class NotificationPreferenceConfiguration : IEntityTypeConfiguration<Noti
         // Same aggregate pattern as Conversation.Messages: Slots is only ever mutated through
         // NotificationPreference's own methods (AddTimeSlot, ResetSelections), so EF Core
         // writes to the private backing field directly rather than through the read-only property.
+        // Cascade (not NoAction) here is intentional and safe: this isn't "delete children when
+        // some unrelated parent gets deleted" - it's "when ResetSelections() clears the Slots
+        // collection, actually delete the now-orphaned rows", which is exactly what should happen.
         builder.HasMany(p => p.Slots)
-               .WithOne()
-               .HasForeignKey(s => s.NotificationPreferenceId)
-               .OnDelete(DeleteBehavior.Cascade);
+            .WithOne()
+            .HasForeignKey(s => s.NotificationPreferenceId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         builder.Navigation(p => p.Slots).UsePropertyAccessMode(PropertyAccessMode.Field);
     }

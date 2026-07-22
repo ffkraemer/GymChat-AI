@@ -86,6 +86,7 @@ app.MapGymEndpoints(usingSqlServer);
 app.MapCampaignEndpoints(usingSqlServer);
 app.MapMemberEndpoints(usingSqlServer);
 app.MapClassTypeEndpoints(usingSqlServer);
+app.MapComplianceEndpoints(usingSqlServer);
 app.MapCredentialHealthEndpoints();
 
 app.Run();

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using GymChatAI.Application.Abstractions;
@@ -10,17 +11,39 @@ namespace GymChatAI.Infrastructure.WhatsApp;
 /// <summary>
 /// Sends outbound messages through the WhatsApp Business Cloud API (Graph API).
 /// Uses a plain typed HttpClient - no third-party SDK dependency.
+///
+/// Also enforces a duplicate-message guard (protects the number's quality rating from
+/// accidental repeat sends - see the Compliance Dashboard) and records every failed call to
+/// IWhatsAppApiErrorRepository, feeding that same dashboard's error history.
 /// </summary>
 public class WhatsAppCloudApiClient : IWhatsAppMessageSender
 {
+    // Identical text sent to the same recipient within this window is treated as an
+    // accidental repeat and skipped, rather than actually sent again.
+    private static readonly TimeSpan DuplicateTextWindow = TimeSpan.FromMinutes(5);
+
+    // Static and keyed by sender+recipient: typed HttpClients are re-created per request by
+    // HttpClientFactory, so this has to live outside the instance to actually catch repeats
+    // across separate incoming webhook calls.
+    private static readonly ConcurrentDictionary<string, (string Text, DateTimeOffset SentAtUtc)> RecentTextSends = new();
+
+    private readonly IWhatsAppApiErrorRepository _errorRepository;
+    private readonly IGymRepository _gymRepository;
     private readonly HttpClient _httpClient;
     private readonly ILogger<WhatsAppCloudApiClient> _logger;
     private readonly WhatsAppOptions _options;
 
-    public WhatsAppCloudApiClient(HttpClient httpClient, IOptions<WhatsAppOptions> options, ILogger<WhatsAppCloudApiClient> logger)
+    public WhatsAppCloudApiClient(
+        HttpClient httpClient,
+        IOptions<WhatsAppOptions> options,
+        IGymRepository gymRepository,
+        IWhatsAppApiErrorRepository errorRepository,
+        ILogger<WhatsAppCloudApiClient> logger)
     {
         _httpClient = httpClient;
         _options = options.Value;
+        _gymRepository = gymRepository;
+        _errorRepository = errorRepository;
         _logger = logger;
 
         if (_httpClient.BaseAddress is null)
@@ -74,8 +97,23 @@ public class WhatsAppCloudApiClient : IWhatsAppMessageSender
         string text,
         CancellationToken cancellationToken = default)
     {
+        var dedupeKey = $"{fromPhoneNumberId}:{toPhoneNumber}";
+        if (RecentTextSends.TryGetValue(dedupeKey, out var last)
+            && last.Text == text
+            && DateTimeOffset.UtcNow - last.SentAtUtc < DuplicateTextWindow)
+        {
+            _logger.LogWarning(
+                "Skipped duplicate text message to {ToPhoneNumber} - identical content was already sent within the last {Minutes} minute(s). " +
+                "This guard protects the number's WhatsApp quality rating from accidental repeat sends.",
+                toPhoneNumber, DuplicateTextWindow.TotalMinutes);
+            throw new DuplicateMessageException(toPhoneNumber);
+        }
+
         var payload = SendTextMessageRequest.Create(toPhoneNumber, text);
-        return await PostAndExtractMessageIdAsync(fromPhoneNumberId, payload, toPhoneNumber, cancellationToken);
+        var wamid = await PostAndExtractMessageIdAsync(fromPhoneNumberId, payload, toPhoneNumber, cancellationToken);
+
+        RecentTextSends[dedupeKey] = (text, DateTimeOffset.UtcNow);
+        return wamid;
     }
 
     private async Task<string> PostAndExtractMessageIdAsync<TPayload>(
@@ -89,6 +127,8 @@ public class WhatsAppCloudApiClient : IWhatsAppMessageSender
             _logger.LogError(
                 "WhatsApp API returned {StatusCode} sending to {ToPhoneNumber}: {Body}",
                 response.StatusCode, toPhoneNumber, errorBody);
+
+            await RecordErrorAsync(fromPhoneNumberId, (int)response.StatusCode, errorBody, cancellationToken);
             response.EnsureSuccessStatusCode();
         }
 
@@ -99,5 +139,43 @@ public class WhatsAppCloudApiClient : IWhatsAppMessageSender
             throw new InvalidOperationException("WhatsApp API did not return a message id.");
 
         return wamid;
+    }
+
+    /// <summary>
+    /// Persists a WhatsAppApiError for the Compliance Dashboard. Best-effort: a failure here
+    /// (e.g. the gym lookup or the write itself failing) must never mask or replace the
+    /// original send failure, so any exception is swallowed after logging.
+    /// </summary>
+    private async Task RecordErrorAsync(string fromPhoneNumberId, int statusCode, string errorBody, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var gym = await _gymRepository.GetByWhatsAppPhoneNumberIdAsync(fromPhoneNumberId, cancellationToken);
+            if (gym is null) return;
+
+            string? errorCode = null;
+            var errorMessage = errorBody;
+
+            try
+            {
+                var parsed = System.Text.Json.JsonSerializer.Deserialize<WhatsAppApiErrorResponse>(errorBody);
+                if (parsed?.Error is not null)
+                {
+                    errorCode = parsed.Error.Code?.ToString();
+                    errorMessage = parsed.Error.Message ?? errorBody;
+                }
+            }
+            catch
+            {
+                // Not JSON, or an unexpected shape - just keep the raw body as the message.
+            }
+
+            var error = new Domain.Entities.WhatsAppApiError(gym.Id, "messages", statusCode, errorCode, errorMessage);
+            await _errorRepository.AddAsync(error, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to record WhatsAppApiError for {PhoneNumberId}.", fromPhoneNumberId);
+        }
     }
 }
