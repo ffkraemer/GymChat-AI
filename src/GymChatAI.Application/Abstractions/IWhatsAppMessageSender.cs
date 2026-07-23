@@ -41,4 +41,18 @@ public interface IWhatsAppMessageSender
         string buttonText,
         IReadOnlyList<WhatsAppListSection> sections,
         CancellationToken cancellationToken = default);
+
+    /// <summary>Sends a message that opens a native WhatsApp Flow (multi-field form).</summary>
+    /// <param name="metaFlowId">Meta's own id for the published Flow.</param>
+    /// <param name="flowToken">A token we generate to correlate this session with the Data Exchange endpoint later.</param>
+    /// <param name="screenId">The initial screen to open.</param>
+    Task<string> SendFlowMessageAsync(
+        string fromPhoneNumberId,
+        string toPhoneNumber,
+        string bodyText,
+        string flowCtaButtonText,
+        string metaFlowId,
+        string flowToken,
+        string screenId,
+        CancellationToken cancellationToken = default);
 }

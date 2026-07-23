@@ -15,12 +15,9 @@ var usingSqlServer = !string.IsNullOrWhiteSpace(connectionString);
 
 builder.Services.AddGymChatInfrastructure(builder.Configuration);
 
-if (usingSqlServer)
-{
-    // Authentication requires a real, durable user store - only available with SQL Server.
-    builder.Services.AddGymChatIdentity();
-}
-
+// Lets the Administration Portal (a separate origin, e.g. localhost:5173 in dev) call this
+// API from the browser. Without this, the frontend's login and every other request fail
+// with a CORS error before ever reaching our endpoints.
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AdminPortal", policy =>
@@ -30,6 +27,12 @@ builder.Services.AddCors(options =>
               .AllowAnyMethod();
     });
 });
+
+if (usingSqlServer)
+{
+    // Authentication requires a real, durable user store - only available with SQL Server.
+    builder.Services.AddGymChatIdentity();
+}
 
 var app = builder.Build();
 
@@ -80,6 +83,7 @@ app.MapGet("/health", () => Results.Ok(new { status = "healthy", persistence = u
     .WithTags("Health");
 
 app.MapWhatsAppWebhookEndpoints();
+app.MapFlowDataExchangeEndpoints();
 app.MapFaqEndpoints(usingSqlServer);
 app.MapConversationEndpoints(usingSqlServer);
 app.MapGymEndpoints(usingSqlServer);
@@ -88,6 +92,7 @@ app.MapMemberEndpoints(usingSqlServer);
 app.MapClassTypeEndpoints(usingSqlServer);
 app.MapComplianceEndpoints(usingSqlServer);
 app.MapTemplateEndpoints(usingSqlServer);
+app.MapFlowEndpoints(usingSqlServer);
 app.MapCredentialHealthEndpoints();
 
 app.Run();

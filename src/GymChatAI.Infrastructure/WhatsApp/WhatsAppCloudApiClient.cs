@@ -27,11 +27,11 @@ public class WhatsAppCloudApiClient : IWhatsAppMessageSender
     // across separate incoming webhook calls.
     private static readonly ConcurrentDictionary<string, (string Text, DateTimeOffset SentAtUtc)> RecentTextSends = new();
 
-    private readonly IWhatsAppApiErrorRepository _errorRepository;
-    private readonly IGymRepository _gymRepository;
     private readonly HttpClient _httpClient;
-    private readonly ILogger<WhatsAppCloudApiClient> _logger;
     private readonly WhatsAppOptions _options;
+    private readonly IGymRepository _gymRepository;
+    private readonly IWhatsAppApiErrorRepository _errorRepository;
+    private readonly ILogger<WhatsAppCloudApiClient> _logger;
 
     public WhatsAppCloudApiClient(
         HttpClient httpClient,
@@ -51,6 +51,31 @@ public class WhatsAppCloudApiClient : IWhatsAppMessageSender
 
         if (_httpClient.DefaultRequestHeaders.Authorization is null)
             _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _options.AccessToken);
+    }
+
+    public async Task<string> SendTextMessageAsync(
+        string fromPhoneNumberId,
+        string toPhoneNumber,
+        string text,
+        CancellationToken cancellationToken = default)
+    {
+        var dedupeKey = $"{fromPhoneNumberId}:{toPhoneNumber}";
+        if (RecentTextSends.TryGetValue(dedupeKey, out var last)
+            && last.Text == text
+            && DateTimeOffset.UtcNow - last.SentAtUtc < DuplicateTextWindow)
+        {
+            _logger.LogWarning(
+                "Skipped duplicate text message to {ToPhoneNumber} - identical content was already sent within the last {Minutes} minute(s). " +
+                "This guard protects the number's WhatsApp quality rating from accidental repeat sends.",
+                toPhoneNumber, DuplicateTextWindow.TotalMinutes);
+            throw new DuplicateMessageException(toPhoneNumber);
+        }
+
+        var payload = SendTextMessageRequest.Create(toPhoneNumber, text);
+        var wamid = await PostAndExtractMessageIdAsync(fromPhoneNumberId, payload, toPhoneNumber, cancellationToken);
+
+        RecentTextSends[dedupeKey] = (text, DateTimeOffset.UtcNow);
+        return wamid;
     }
 
     public async Task<string> SendButtonMessageAsync(
@@ -91,29 +116,18 @@ public class WhatsAppCloudApiClient : IWhatsAppMessageSender
         return await PostAndExtractMessageIdAsync(fromPhoneNumberId, payload, toPhoneNumber, cancellationToken);
     }
 
-    public async Task<string> SendTextMessageAsync(
-                string fromPhoneNumberId,
+    public async Task<string> SendFlowMessageAsync(
+        string fromPhoneNumberId,
         string toPhoneNumber,
-        string text,
+        string bodyText,
+        string flowCtaButtonText,
+        string metaFlowId,
+        string flowToken,
+        string screenId,
         CancellationToken cancellationToken = default)
     {
-        var dedupeKey = $"{fromPhoneNumberId}:{toPhoneNumber}";
-        if (RecentTextSends.TryGetValue(dedupeKey, out var last)
-            && last.Text == text
-            && DateTimeOffset.UtcNow - last.SentAtUtc < DuplicateTextWindow)
-        {
-            _logger.LogWarning(
-                "Skipped duplicate text message to {ToPhoneNumber} - identical content was already sent within the last {Minutes} minute(s). " +
-                "This guard protects the number's WhatsApp quality rating from accidental repeat sends.",
-                toPhoneNumber, DuplicateTextWindow.TotalMinutes);
-            throw new DuplicateMessageException(toPhoneNumber);
-        }
-
-        var payload = SendTextMessageRequest.Create(toPhoneNumber, text);
-        var wamid = await PostAndExtractMessageIdAsync(fromPhoneNumberId, payload, toPhoneNumber, cancellationToken);
-
-        RecentTextSends[dedupeKey] = (text, DateTimeOffset.UtcNow);
-        return wamid;
+        var payload = SendFlowMessageRequest.Create(toPhoneNumber, bodyText, flowCtaButtonText, metaFlowId, flowToken, screenId);
+        return await PostAndExtractMessageIdAsync(fromPhoneNumberId, payload, toPhoneNumber, cancellationToken);
     }
 
     private async Task<string> PostAndExtractMessageIdAsync<TPayload>(

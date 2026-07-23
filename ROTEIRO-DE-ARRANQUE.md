@@ -9,11 +9,13 @@ Segue os passos por ordem — cada um depende do anterior.
 
 - [ ] Docker Desktop aberto
 - [ ] `docker compose up -d` (raiz do repo)
+- [ ] Confirmar se há migrações por aplicar (`dotnet ef migrations has-pending-model-changes`)
 - [ ] `dotnet run --project src\GymChatAI.Api`
 - [ ] `ngrok http 5277` (**noutra janela**)
 - [ ] Confirmar se o URL do ngrok mudou → se sim, atualizar Callback URL no Meta
 - [ ] `GET /health`, `GET /health/whatsapp`, `GET /health/ai` → todos `"ok"`
 - [ ] (opcional) `cd frontend && npm run dev` se fores usar o Portal de Administração
+- [ ] (só na primeira vez, por gym) Chaves RSA geradas + registadas, se fores usar **WhatsApp Flows**
 
 ---
 
@@ -36,9 +38,22 @@ Deve mostrar `gymchatai-sqlserver` com estado `healthy` (pode demorar uns 10-20s
 
 > Não uses `docker compose down -v` a menos que queiras mesmo apagar os dados — o `-v` remove o volume onde a base de dados vive. `docker compose down` (sem `-v`) ou simplesmente deixar os containers a correr são seguros.
 
-## Passo 3 — Arrancar o backend
+## Passo 3 — Confirmar migrações pendentes (antes de arrancar)
 
 ```powershell
+cd src\GymChatAI.Infrastructure
+dotnet ef migrations has-pending-model-changes --startup-project ..\GymChatAI.Api
+```
+Se disser que há alterações pendentes:
+```powershell
+dotnet ef migrations add NomeDaAlteracao --startup-project ..\GymChatAI.Api
+```
+O `MigrateAsync()` no arranque aplica a migração sozinho — nunca precisas de `DROP DATABASE` para isto.
+
+## Passo 4 — Arrancar o backend
+
+```powershell
+cd ..\..
 dotnet run --project src\GymChatAI.Api
 ```
 (ou usa o ▶ Play do Visual Studio)
@@ -54,7 +69,7 @@ cd src\GymChatAI.Api
 dotnet user-secrets list
 ```
 
-## Passo 4 — ngrok (numa janela de terminal **separada**, deixa esta a correr)
+## Passo 5 — ngrok (numa janela de terminal **separada**, deixa esta a correr)
 
 ```powershell
 ngrok http 5277
@@ -74,7 +89,9 @@ Se este URL for **diferente** do que já tinhas configurado da última vez, tens
 3. **Verify Token**: o mesmo de sempre (não muda)
 4. **Verify and Save**
 
-## Passo 5 — Confirmar que tudo está saudável, antes de testares
+Se estiveres a usar **WhatsApp Flows**, o endpoint de *data exchange* (`/webhooks/whatsapp/flow-data-exchange`) também vive atrás do mesmo túnel ngrok — não precisas de configurar nada extra para isso no Meta (o endpoint é referenciado no próprio Flow, não como um webhook geral), mas confirma que o ngrok continua ativo sempre que testares um Flow.
+
+## Passo 6 — Confirmar que tudo está saudável, antes de testares
 
 ```
 GET http://localhost:5277/health
@@ -88,7 +105,7 @@ Todos devem devolver `"status": "ok"` (ou `"healthy"` no caso do `/health` geral
 |---|---|
 | Token expirado → gera um novo (permanente, via System User) | Chave inválida, revogada, ou (Gemini free) limite de taxa temporário |
 
-## Passo 6 — (Opcional) Portal de Administração
+## Passo 7 — (Opcional) Portal de Administração
 
 ```powershell
 cd frontend
@@ -96,7 +113,7 @@ npm run dev
 ```
 Abre `http://localhost:5173`. Login: `admin@demo.gymchat.ai` / `GymChat!Demo123`.
 
-## Passo 7 — Testar
+## Passo 8 — Testar
 
 Envia uma mensagem de WhatsApp para o teu número de teste. Acompanha em paralelo:
 - O terminal do `dotnet run` (logs do processamento)
@@ -104,19 +121,60 @@ Envia uma mensagem de WhatsApp para o teu número de teste. Acompanha em paralel
 
 ---
 
+## 🔑 Configuração única por gym: WhatsApp Flows (encriptação RSA)
+
+Só precisas de fazer isto **uma vez por WABA** (não repetes a cada arranque) — mas fica aqui documentado porque, se alguma vez precisares de gerar chaves novas ou configurares um gym novo, é aqui que voltas.
+
+### 1. Gera o par de chaves RSA (precisa de `openssl` instalado)
+
+```bash
+openssl genrsa -des3 -passout pass:UMA_PASSWORD_FORTE_AQUI -out private.pem 2048
+openssl rsa -in private.pem -passin pass:UMA_PASSWORD_FORTE_AQUI -pubout -out public.pem
+```
+
+Isto cria:
+- `private.pem` — **nunca sai da tua máquina/servidor**, nunca vai para o git
+- `public.pem` — este sim, vai para a Meta (não é secreto)
+
+### 2. Guarda a chave privada nos `user-secrets` (nunca no `appsettings.json`)
+
+```powershell
+cd src\GymChatAI.Api
+dotnet user-secrets set "WhatsAppFlow:PrivateKeyPem" "$(Get-Content ..\..\private.pem -Raw)"
+dotnet user-secrets set "WhatsAppFlow:PrivateKeyPassword" "UMA_PASSWORD_FORTE_AQUI"
+```
+
+### 3. Regista a chave pública na Meta
+
+No Portal → página **Flows** → cola o conteúdo de `public.pem` no campo "Chave pública RSA" → **"Registar chave"**.
+(Isto chama `POST /{WABA_ID}/whatsapp_business_encryption` automaticamente por ti — não precisas de ir ao Graph API Explorer.)
+
+### 4. Cria e publica o primeiro Flow
+
+Ainda na página **Flows**: dá um nome → **"Criar Flow"** → **"Publicar"** → **"Testar"** com o teu número verificado.
+
+### ⚠️ Se mudares de máquina/ambiente
+
+A chave privada só existe nos teus `user-secrets` locais — se mudares de computador ou reinstalares o SO, tens de repetir o Passo 2 com o mesmo `private.pem` (guarda-o num cofre de passwords, não só no disco). Se perderes o `private.pem` sem cópia, tens de gerar um par novo e registar a chave pública nova (as sessões de Flow antigas deixam de funcionar, mas isso é normal e esperado — sessões de Flow são de curta duração).
+
+---
+
 ## 🔧 Referência rápida de problemas já resolvidos
 
 | Sintoma | Causa provável | Solução |
 |---|---|---|
-| Nada chega ao ngrok Inspector | URL do ngrok mudou, ou não está a correr | Passo 4 |
-| Chega ao ngrok mas app não recebe | App não está a correr, ou porta errada | Confirma Passo 3 |
+| Nada chega ao ngrok Inspector | URL do ngrok mudou, ou não está a correr | Passo 5 |
+| Chega ao ngrok mas app não recebe | App não está a correr, ou porta errada | Confirma Passo 4 |
 | `"No gym configured for WhatsApp phone number id"` | `DemoPhoneNumberId` não bate certo, ou processo antigo ainda na porta | Confirma `appsettings`/secrets; mata processos antigos na porta 5277 |
 | Erro 401 do WhatsApp ao enviar | Token expirado | `GET /health/whatsapp`; gera token permanente (System User) |
 | `"AI assistant unavailable"` | Chave de IA inválida, ou limite de taxa (comum no Gemini free) | `GET /health/ai`; olha a linha de erro completa no log, acima da mensagem resumida |
 | `"Business account is restricted from messaging users in this country"` | Restrição Brasil/Indonésia entre países diferentes | Usa destinatário de país não-restrito |
 | CORS bloqueado no frontend | Falta `app.UseCors(...)` no backend | Confirma `Program.cs` |
 | `Invalid object name 'X'` no SQL | Falta aplicar migração nova | `dotnet ef migrations add ... && dotnet run` (o `MigrateAsync()` aplica sozinho) |
+| `PendingModelChangesWarning` ao arrancar | Alteraste uma entidade/configuração e ainda não geraste a migração correspondente | Passo 3 |
 | Erro no primeiro request a um endpoint gym-scoped | `GymScopeFilter` a bloquear (gymId da rota ≠ claim do token) | Confirma que estás a usar o `gymId` certo para o utilizador autenticado |
+| `421` no endpoint de *data exchange* das Flows | Falha a desencriptar (chave errada/desatualizada) | Confirma que a chave pública registada na Meta corresponde à privada nos `user-secrets` |
+| Flow não avança além do ecrã inicial | `WhatsAppBusinessAccountId` do gym não está configurado, ou a chave não foi registada | Página **Templates**/**Flows** → confirma o WABA ID e regista a chave |
 
 ---
 
@@ -128,7 +186,8 @@ Envia uma mensagem de WhatsApp para o teu número de teste. Acompanha em paralel
 | Password do SQL Server (dev) | `Your_password123` (definida no `docker-compose.yml`) |
 | Onde renovar o token do WhatsApp | `business.facebook.com` → System Users → Generate Token (Never expire) |
 | Onde renovar a chave do Gemini | `aistudio.google.com/apikey` |
+| Onde gerar as chaves RSA das Flows | `openssl` local (ver secção acima) |
 
 ---
 
-*Este documento é só para desenvolvimento local. Em produção, o arranque seria gerido por infraestrutura própria (não Docker Desktop/ngrok manuais).*
+*Este documento é só para desenvolvimento local. Em produção, o arranque seria gerido por infraestrutura própria (não Docker Desktop/ngrok manuais), e a chave privada RSA viveria num cofre de segredos gerido (ex: Azure Key Vault), não em `user-secrets`.*

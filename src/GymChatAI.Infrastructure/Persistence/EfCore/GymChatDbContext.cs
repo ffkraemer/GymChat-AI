@@ -34,6 +34,7 @@ public class GymChatDbContext : IdentityDbContext<ApplicationUser, IdentityRole<
     public DbSet<WhatsAppApiError> WhatsAppApiErrors => Set<WhatsAppApiError>();
     public DbSet<WhatsAppDeliveryFailure> WhatsAppDeliveryFailures => Set<WhatsAppDeliveryFailure>();
     public DbSet<WhatsAppMessageTemplate> WhatsAppMessageTemplates => Set<WhatsAppMessageTemplate>();
+    public DbSet<WhatsAppFlow> WhatsAppFlows => Set<WhatsAppFlow>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

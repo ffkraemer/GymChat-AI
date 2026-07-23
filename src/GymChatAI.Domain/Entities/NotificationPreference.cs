@@ -65,6 +65,13 @@ public class NotificationPreference : Entity
         _slots.Add(new NotificationTimeSlot(Id, dayOfWeek, timeWindow));
     }
 
+    /// <summary>
+    /// Clears just the time slots (unlike ResetSelections, which also clears class type
+    /// selections) - used when a single-screen submission (the WhatsApp Flow form) should
+    /// replace the previous slot(s) rather than accumulate alongside them.
+    /// </summary>
+    public void ClearTimeSlots() => _slots.Clear();
+
     /// <summary>Lets the member start over (e.g. re-running the menu from scratch).</summary>
     public void ResetSelections()
     {

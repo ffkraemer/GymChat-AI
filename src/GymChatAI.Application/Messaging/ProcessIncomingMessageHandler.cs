@@ -7,9 +7,9 @@ namespace GymChatAI.Application.Messaging;
 
 /// <summary>
 /// Orchestrates the end-to-end flow:
-/// receive message -> resolve gym/conversation -> [onboarding/preferences menu, if
-/// applicable] -> detect language -> ground with FAQs -> ask the AI assistant -> persist
-/// -> send reply.
+/// receive message -> resolve gym/conversation -> record it once -> [run the guided
+/// onboarding/preferences menu, if applicable] -> otherwise ground with FAQs -> ask the AI
+/// assistant -> persist -> send reply.
 /// If the AI assistant fails, the message is queued as a PendingAIReply so
 /// RetryPendingAIRepliesHandler can try again later instead of it being lost.
 /// </summary>
@@ -28,6 +28,7 @@ public class ProcessIncomingMessageHandler
     private readonly IAIAssistantService _aiAssistantService;
     private readonly IWhatsAppMessageSender _whatsAppMessageSender;
     private readonly OnboardingFlowHandler _onboardingFlowHandler;
+    private readonly GymChatAI.Application.Flows.WhatsAppFlowCompletionHandler _flowCompletionHandler;
     private readonly ILogger<ProcessIncomingMessageHandler> _logger;
 
     public ProcessIncomingMessageHandler(
@@ -41,6 +42,7 @@ public class ProcessIncomingMessageHandler
         IAIAssistantService aiAssistantService,
         IWhatsAppMessageSender whatsAppMessageSender,
         OnboardingFlowHandler onboardingFlowHandler,
+        GymChatAI.Application.Flows.WhatsAppFlowCompletionHandler flowCompletionHandler,
         ILogger<ProcessIncomingMessageHandler> logger)
     {
         _gymRepository = gymRepository;
@@ -53,6 +55,7 @@ public class ProcessIncomingMessageHandler
         _aiAssistantService = aiAssistantService;
         _whatsAppMessageSender = whatsAppMessageSender;
         _onboardingFlowHandler = onboardingFlowHandler;
+        _flowCompletionHandler = flowCompletionHandler;
         _logger = logger;
     }
 
@@ -82,38 +85,53 @@ public class ProcessIncomingMessageHandler
             await EnsureLeadCapturedAsync(gym.Id, message, cancellationToken);
         }
 
-        // 4. Brand new contact: lead with the onboarding menu instead of handing their
-        // first message straight to the AI - captures consent + preferences up front.
+        // 4. Detect language (nothing to detect from a button/list tap - keep whatever the
+        // conversation already had) and record the inbound message exactly once.
+        var language = string.IsNullOrEmpty(message.Text)
+            ? conversation.PreferredLanguage
+            : await _languageDetector.DetectAsync(message.Text, cancellationToken);
+
+        conversation.AddInboundMessage(GetLoggableContent(message), message.WhatsAppMessageId, language);
+
         if (isNewConversation)
-        {
-            conversation.AddInboundMessage(GetLoggableContent(message), message.WhatsAppMessageId, Domain.Enums.Language.Unknown);
-            await _onboardingFlowHandler.StartOnboardingAsync(gym, conversation, cancellationToken);
             await _conversationRepository.AddAsync(conversation, cancellationToken);
+
+        // 4b. A completed WhatsApp Flow submission (the native form) - handle it directly,
+        // regardless of new/existing conversation or menu state, and stop there.
+        if (message.FlowResponseJson is not null)
+        {
+            await _flowCompletionHandler.HandleAsync(gym.Id, message.FromPhoneNumber, message.FlowResponseJson, cancellationToken);
+            if (!isNewConversation)
+                await _conversationRepository.UpdateAsync(conversation, cancellationToken);
             return Result.Success();
         }
 
-        // 5. Mid-menu (a button/list reply is expected) - let the flow handler take it instead of the AI.
+        // 5. Brand new contact: lead with the onboarding menu instead of handing their
+        // first message straight to the AI - captures consent + preferences up front.
+        if (isNewConversation)
+        {
+            await _onboardingFlowHandler.StartOnboardingAsync(gym, conversation, cancellationToken);
+            await _conversationRepository.UpdateAsync(conversation, cancellationToken);
+            return Result.Success();
+        }
+
+        // 6. Mid-menu (a button/list reply is expected) - let the flow handler take it instead of the AI.
         if (conversation.FlowStep != Domain.Enums.ConversationFlowStep.None)
         {
-            conversation.AddInboundMessage(GetLoggableContent(message), message.WhatsAppMessageId, conversation.PreferredLanguage);
             await _onboardingFlowHandler.TryHandleFlowMessageAsync(gym, conversation, message, cancellationToken);
             await _conversationRepository.UpdateAsync(conversation, cancellationToken);
             return Result.Success();
         }
 
-        // 6. Anyone can revisit their notification preferences at any time with a keyword.
+        // 7. Anyone can revisit their notification preferences at any time with a keyword.
         if (string.IsNullOrWhiteSpace(message.InteractiveReplyId) && OnboardingFlowHandler.IsPreferencesKeyword(message.Text))
         {
-            conversation.AddInboundMessage(message.Text, message.WhatsAppMessageId, conversation.PreferredLanguage);
             await _onboardingFlowHandler.RestartAsync(gym, conversation, cancellationToken);
             await _conversationRepository.UpdateAsync(conversation, cancellationToken);
             return Result.Success();
         }
 
-        // 7. Ordinary message: detect language and record it, then hand off to the AI assistant.
-        var language = await _languageDetector.DetectAsync(message.Text, cancellationToken);
-        conversation.AddInboundMessage(message.Text, message.WhatsAppMessageId, language);
-
+        // 8. Ordinary message: ground with FAQs and hand off to the AI assistant.
         var relevantFaqs = await _faqRepository.SearchAsync(gym.Id, message.Text, MaxRelevantFaqs, cancellationToken);
 
         var context = new AIAssistantContext(
