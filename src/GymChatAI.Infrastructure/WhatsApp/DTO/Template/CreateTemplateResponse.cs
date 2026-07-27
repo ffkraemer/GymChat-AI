@@ -13,4 +13,5 @@ internal record TemplateListItem(
     [property: JsonPropertyName("id")] string? Id,
     [property: JsonPropertyName("name")] string? Name,
     [property: JsonPropertyName("status")] string? Status,
+    [property: JsonPropertyName("category")] string? Category,
     [property: JsonPropertyName("rejected_reason")] string? RejectedReason);

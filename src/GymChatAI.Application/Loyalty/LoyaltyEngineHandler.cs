@@ -18,6 +18,7 @@ public class LoyaltyEngineHandler
     private readonly ICampaignMessageRepository _campaignMessageRepository;
     private readonly IMemberRepository _memberRepository;
     private readonly IGymRepository _gymRepository;
+    private readonly IWhatsAppMessageTemplateRepository _templateRepository;
     private readonly IWhatsAppMessageSender _whatsAppMessageSender;
     private readonly ILogger<LoyaltyEngineHandler> _logger;
 
@@ -26,6 +27,7 @@ public class LoyaltyEngineHandler
         ICampaignMessageRepository campaignMessageRepository,
         IMemberRepository memberRepository,
         IGymRepository gymRepository,
+        IWhatsAppMessageTemplateRepository templateRepository,
         IWhatsAppMessageSender whatsAppMessageSender,
         ILogger<LoyaltyEngineHandler> logger)
     {
@@ -33,6 +35,7 @@ public class LoyaltyEngineHandler
         _campaignMessageRepository = campaignMessageRepository;
         _memberRepository = memberRepository;
         _gymRepository = gymRepository;
+        _templateRepository = templateRepository;
         _whatsAppMessageSender = whatsAppMessageSender;
         _logger = logger;
     }
@@ -154,7 +157,33 @@ public class LoyaltyEngineHandler
 
         try
         {
-            await _whatsAppMessageSender.SendTextMessageAsync(gym.WhatsAppPhoneNumberId, member.PhoneNumber, content, cancellationToken);
+            var template = campaign.WhatsAppMessageTemplateId is not null
+                ? await _templateRepository.GetByIdAsync(campaign.WhatsAppMessageTemplateId.Value, cancellationToken)
+                : null;
+
+            if (template is not null && template.Status == WhatsAppTemplateStatus.Approved)
+            {
+                var variableNames = template.ExtractVariableNames();
+                var parameterValues = MessageTemplateRenderer.ResolveParameterValues(variableNames, member, gym.Name);
+
+                await _whatsAppMessageSender.SendTemplateMessageAsync(
+                    gym.WhatsAppPhoneNumberId, member.PhoneNumber, template.Name, template.Language, parameterValues, cancellationToken);
+            }
+            else
+            {
+                // Either no template is linked yet, or it hasn't been approved by Meta -
+                // fall back to free text so the campaign still sends, but this is exactly
+                // the compliance risk the Dashboard warns about (see ComplianceDashboardHandler).
+                if (campaign.WhatsAppMessageTemplateId is not null)
+                {
+                    _logger.LogWarning(
+                        "Campaign {CampaignId} is linked to template {TemplateId}, but it isn't Approved yet (status: {Status}) - falling back to free text.",
+                        campaign.Id, campaign.WhatsAppMessageTemplateId, template?.Status.ToString() ?? "not found");
+                }
+
+                await _whatsAppMessageSender.SendTextMessageAsync(gym.WhatsAppPhoneNumberId, member.PhoneNumber, content, cancellationToken);
+            }
+
             campaignMessage.MarkSent();
         }
         catch (Exception ex)

@@ -31,6 +31,16 @@ public class Campaign : Entity
 
     public bool IsActive { get; private set; } = true;
 
+    /// <summary>
+    /// The approved WhatsApp template to send this campaign through, instead of free text.
+    /// Meta only allows free-form text within an open 24h customer-service window; loyalty
+    /// campaigns are business-initiated and can't rely on that window being open, so linking
+    /// an approved template is how a campaign becomes actually compliant to send.
+    /// Null means "not yet linked" - LoyaltyEngineHandler falls back to free text in that
+    /// case (with the compliance risk that implies), for backward compatibility.
+    /// </summary>
+    public Guid? WhatsAppMessageTemplateId { get; private set; }
+
     private Campaign() { }
 
     public Campaign(Guid gymId, string name, CampaignType type, string messageTemplate, int? triggerDayOffset = null)
@@ -59,4 +69,8 @@ public class Campaign : Entity
             MessageTemplate = messageTemplate;
         Touch();
     }
+
+    public void LinkWhatsAppTemplate(Guid whatsAppMessageTemplateId) => WhatsAppMessageTemplateId = whatsAppMessageTemplateId;
+
+    public void UnlinkWhatsAppTemplate() => WhatsAppMessageTemplateId = null;
 }

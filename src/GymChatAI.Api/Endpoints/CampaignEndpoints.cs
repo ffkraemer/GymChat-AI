@@ -8,11 +8,13 @@ namespace GymChatAI.Api.Endpoints;
 
 public record CreateCampaignRequest(string Name, CampaignType Type, string MessageTemplate, int? TriggerDayOffset, Guid? GymId = null);
 
-public record CampaignResponse(Guid Id, string Name, string Type, string MessageTemplate, int? TriggerDayOffset, bool IsActive)
+public record CampaignResponse(Guid Id, string Name, string Type, string MessageTemplate, int? TriggerDayOffset, bool IsActive, Guid? WhatsAppMessageTemplateId)
 {
     public static CampaignResponse From(Campaign campaign) => new(
-        campaign.Id, campaign.Name, campaign.Type.ToString(), campaign.MessageTemplate, campaign.TriggerDayOffset, campaign.IsActive);
+        campaign.Id, campaign.Name, campaign.Type.ToString(), campaign.MessageTemplate, campaign.TriggerDayOffset, campaign.IsActive, campaign.WhatsAppMessageTemplateId);
 }
+
+public record LinkWhatsAppTemplateRequest(Guid? TemplateId);
 
 public record CampaignMessageResponse(Guid Id, Guid? MemberId, string RecipientPhoneNumber, string Status, DateTimeOffset? SentAtUtc)
 {
@@ -88,6 +90,40 @@ public static class CampaignEndpoints
             return Results.Ok(messages.Select(CampaignMessageResponse.From));
         });
         if (requireAuth) history.AddEndpointFilter<GymScopeFilter>();
+
+        // Links (or unlinks, when TemplateId is null) an approved WhatsApp template to this
+        // campaign - see LoyaltyEngineHandler, which sends through the template instead of
+        // free text once it's Approved (resolving the Compliance Dashboard's warning about
+        // business-initiated messages needing an approved template outside the 24h window).
+        group.MapPost("/{campaignId:guid}/link-template", async (
+            Guid campaignId,
+            LinkWhatsAppTemplateRequest request,
+            HttpContext httpContext,
+            ICampaignRepository campaignRepository,
+            IWhatsAppMessageTemplateRepository templateRepository,
+            CancellationToken ct) =>
+        {
+            var campaign = await campaignRepository.GetByIdAsync(campaignId, ct);
+            if (campaign is null) return Results.NotFound();
+            if (requireAuth && !httpContext.User.IsPlatformAdmin() && campaign.GymId != httpContext.User.GetGymId())
+                return Results.Forbid();
+
+            if (request.TemplateId is null)
+            {
+                campaign.UnlinkWhatsAppTemplate();
+            }
+            else
+            {
+                var template = await templateRepository.GetByIdAsync(request.TemplateId.Value, ct);
+                if (template is null) return Results.BadRequest(new { error = "Template not found." });
+                if (template.GymId != campaign.GymId) return Results.BadRequest(new { error = "This template belongs to a different gym." });
+
+                campaign.LinkWhatsAppTemplate(request.TemplateId.Value);
+            }
+
+            await campaignRepository.UpdateAsync(campaign, ct);
+            return Results.Ok(CampaignResponse.From(campaign));
+        });
 
         return app;
     }

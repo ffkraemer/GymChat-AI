@@ -29,4 +29,13 @@ public class EfWhatsAppMessageTemplateRepository : IWhatsAppMessageTemplateRepos
 
         await _context.SaveChangesAsync(cancellationToken);
     }
+
+    public async Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var template = await _context.WhatsAppMessageTemplates.FirstOrDefaultAsync(t => t.Id == id, cancellationToken);
+        if (template is null) return;
+
+        _context.WhatsAppMessageTemplates.Remove(template);
+        await _context.SaveChangesAsync(cancellationToken);
+    }
 }

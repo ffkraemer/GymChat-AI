@@ -35,4 +35,10 @@ public class InMemoryWhatsAppMessageTemplateRepository : IWhatsAppMessageTemplat
         _store.Items[template.Id] = template;
         return Task.CompletedTask;
     }
+
+    public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        _store.Items.TryRemove(id, out _);
+        return Task.CompletedTask;
+    }
 }

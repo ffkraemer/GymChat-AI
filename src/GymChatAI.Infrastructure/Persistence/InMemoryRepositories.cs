@@ -246,6 +246,12 @@ public class InMemoryCampaignRepository : ICampaignRepository
         _store.Campaigns[campaign.Id] = campaign;
         return Task.CompletedTask;
     }
+
+    public Task UpdateAsync(Campaign campaign, CancellationToken cancellationToken = default)
+    {
+        _store.Campaigns[campaign.Id] = campaign;
+        return Task.CompletedTask;
+    }
 }
 
 public class InMemoryCampaignMessageRepository : ICampaignMessageRepository

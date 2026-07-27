@@ -12,6 +12,13 @@ public class WhatsAppFlow : Entity
 {
     public Guid GymId { get; private set; }
 
+    /// <summary>
+    /// Snapshot of the gym's WhatsAppBusinessAccountId at creation time - lets the Portal
+    /// filter out flows that belonged to a WABA the gym has since moved away from, without
+    /// deleting the record. Null for flows created before this field existed.
+    /// </summary>
+    public string? WhatsAppBusinessAccountId { get; private set; }
+
     public string Name { get; private set; } = default!;
 
     /// <summary>Meta's own id for this flow, assigned once created via the API.</summary>
@@ -24,7 +31,7 @@ public class WhatsAppFlow : Entity
 
     private WhatsAppFlow() { }
 
-    public WhatsAppFlow(Guid gymId, string name, string flowJson)
+    public WhatsAppFlow(Guid gymId, string name, string flowJson, string? whatsAppBusinessAccountId = null)
     {
         if (string.IsNullOrWhiteSpace(name))
             throw new ArgumentException("Flow name is required.", nameof(name));
@@ -34,6 +41,7 @@ public class WhatsAppFlow : Entity
         GymId = gymId;
         Name = name;
         FlowJson = flowJson;
+        WhatsAppBusinessAccountId = whatsAppBusinessAccountId;
     }
 
     public void MarkCreated(string metaFlowId) => MetaFlowId = metaFlowId;

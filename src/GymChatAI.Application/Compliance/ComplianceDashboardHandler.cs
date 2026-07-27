@@ -1,5 +1,6 @@
 using GymChatAI.Application.Abstractions;
 using GymChatAI.Domain.Entities;
+using GymChatAI.Domain.Enums;
 
 namespace GymChatAI.Application.Compliance;
 
@@ -40,17 +41,23 @@ public class ComplianceDashboardHandler
     private readonly IWhatsAppApiErrorRepository _errorRepository;
     private readonly IWhatsAppDeliveryFailureRepository _deliveryFailureRepository;
     private readonly IPendingAIReplyRepository _pendingAIReplyRepository;
+    private readonly ICampaignRepository _campaignRepository;
+    private readonly IWhatsAppMessageTemplateRepository _templateRepository;
 
     public ComplianceDashboardHandler(
         IWhatsAppComplianceClient complianceClient,
         IWhatsAppApiErrorRepository errorRepository,
         IWhatsAppDeliveryFailureRepository deliveryFailureRepository,
-        IPendingAIReplyRepository pendingAIReplyRepository)
+        IPendingAIReplyRepository pendingAIReplyRepository,
+        ICampaignRepository campaignRepository,
+        IWhatsAppMessageTemplateRepository templateRepository)
     {
         _complianceClient = complianceClient;
         _errorRepository = errorRepository;
         _deliveryFailureRepository = deliveryFailureRepository;
         _pendingAIReplyRepository = pendingAIReplyRepository;
+        _campaignRepository = campaignRepository;
+        _templateRepository = templateRepository;
     }
 
     public async Task<ComplianceSnapshot> GetSnapshotAsync(Gym gym, CancellationToken cancellationToken = default)
@@ -70,7 +77,8 @@ public class ComplianceDashboardHandler
             .Take(5)
             .ToList();
 
-        var riskFlags = BuildRiskFlags(health, errors24h, topErrorCodes);
+        var unlinkedCampaignNames = await GetCampaignsMissingApprovedTemplateAsync(gym.Id, cancellationToken);
+        var riskFlags = BuildRiskFlags(health, errors24h, topErrorCodes, unlinkedCampaignNames);
 
         return new ComplianceSnapshot(
             health.QualityRating,
@@ -80,6 +88,35 @@ public class ComplianceDashboardHandler
             errors7d.Count,
             topErrorCodes,
             riskFlags);
+    }
+
+    /// <summary>
+    /// Names of active campaigns still sending free text - either never linked to a
+    /// WhatsApp template, or linked to one Meta hasn't approved yet. Manual campaigns are
+    /// excluded: an operator triggers those by hand, presumably within a window they know
+    /// is open (e.g. right after a customer messaged in), so the same risk doesn't apply
+    /// automatically the way it does for the always-on automatic campaigns.
+    /// </summary>
+    private async Task<IReadOnlyList<string>> GetCampaignsMissingApprovedTemplateAsync(Guid gymId, CancellationToken cancellationToken)
+    {
+        var campaigns = await _campaignRepository.GetByGymAsync(gymId, cancellationToken);
+        var automaticActiveCampaigns = campaigns.Where(c => c.IsActive && c.Type != CampaignType.Manual).ToList();
+
+        var missing = new List<string>();
+        foreach (var campaign in automaticActiveCampaigns)
+        {
+            if (campaign.WhatsAppMessageTemplateId is null)
+            {
+                missing.Add(campaign.Name);
+                continue;
+            }
+
+            var template = await _templateRepository.GetByIdAsync(campaign.WhatsAppMessageTemplateId.Value, cancellationToken);
+            if (template is null || template.Status != WhatsAppTemplateStatus.Approved)
+                missing.Add(campaign.Name);
+        }
+
+        return missing;
     }
 
     /// <summary>
@@ -104,7 +141,8 @@ public class ComplianceDashboardHandler
     private static List<string> BuildRiskFlags(
         WhatsAppPhoneNumberHealth health,
         IReadOnlyList<WhatsAppApiError> errors24h,
-        IReadOnlyList<ErrorCodeBreakdown> topErrorCodes)
+        IReadOnlyList<ErrorCodeBreakdown> topErrorCodes,
+        IReadOnlyList<string> campaignsMissingApprovedTemplate)
     {
         var flags = new List<string>();
 
@@ -132,11 +170,15 @@ public class ComplianceDashboardHandler
             flags.Add($"Volume elevado de erros da API do WhatsApp nas últimas 24h ({errors24h.Count}).");
         }
 
-        // Static, always-shown advisory: our loyalty campaigns currently send free-form text,
-        // which WhatsApp only allows within an open 24h customer-service window. Outside that
-        // window, Meta requires pre-approved message templates - flagging this here since it's
-        // a real compliance gap in the current implementation, not a hypothetical one.
-        flags.Add("As campanhas do motor de fidelização (Boas-vindas, Aniversário, Reativação) enviam mensagens de texto livre. Fora da janela de 24h de atendimento, a Meta exige o uso de templates aprovados - conteúdo enviado fora dessa janela sem template está em risco de rejeição ou de penalizar o quality rating.");
+        // Only flags the campaigns that are actually still at risk - once a campaign is
+        // linked to an Approved template, LoyaltyEngineHandler sends through it and this
+        // warning stops mentioning it.
+        if (campaignsMissingApprovedTemplate.Count > 0)
+        {
+            flags.Add(
+                $"As campanhas \"{string.Join(", ", campaignsMissingApprovedTemplate)}\" ainda enviam mensagens de texto livre (sem template aprovado ligado). " +
+                "Fora da janela de 24h de atendimento, a Meta exige templates aprovados - liga cada campanha a um template Approved na página Templates.");
+        }
 
         return flags;
     }

@@ -55,4 +55,18 @@ public interface IWhatsAppMessageSender
         string flowToken,
         string screenId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sends a message using an Approved WhatsApp template - the only compliant way to
+    /// business-initiate a conversation outside an open 24h customer-service window (see
+    /// the Compliance Dashboard). parameterValues must be in the same order as the
+    /// template's {{1}}, {{2}}... placeholders.
+    /// </summary>
+    Task<string> SendTemplateMessageAsync(
+        string fromPhoneNumberId,
+        string toPhoneNumber,
+        string templateName,
+        string templateLanguage,
+        IReadOnlyList<string> parameterValues,
+        CancellationToken cancellationToken = default);
 }

@@ -12,6 +12,7 @@ public class WhatsAppFlowConfiguration : IEntityTypeConfiguration<WhatsAppFlow>
         builder.ConfigureEntityBase();
 
         builder.Property(f => f.Name).IsRequired().HasMaxLength(200);
+        builder.Property(f => f.WhatsAppBusinessAccountId).HasMaxLength(64);
         builder.Property(f => f.MetaFlowId).HasMaxLength(128);
         builder.Property(f => f.Status).HasConversion<string>().HasMaxLength(20);
         builder.Property(f => f.FlowJson).IsRequired().HasColumnType("nvarchar(max)");

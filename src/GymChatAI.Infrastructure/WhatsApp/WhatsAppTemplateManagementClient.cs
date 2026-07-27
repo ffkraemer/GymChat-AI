@@ -74,7 +74,7 @@ public class WhatsAppTemplateManagementClient : IWhatsAppTemplateManagementClien
         string whatsAppBusinessAccountId, CancellationToken cancellationToken = default)
     {
         var response = await _httpClient.GetAsync(
-            $"{whatsAppBusinessAccountId}/message_templates?fields=id,name,status,rejected_reason", cancellationToken);
+            $"{whatsAppBusinessAccountId}/message_templates?fields=id,name,status,category,rejected_reason", cancellationToken);
 
         if (!response.IsSuccessStatusCode)
         {
@@ -87,8 +87,19 @@ public class WhatsAppTemplateManagementClient : IWhatsAppTemplateManagementClien
 
         return (result?.Data ?? [])
             .Where(t => t.Id is not null && t.Status is not null)
-            .Select(t => new WhatsAppTemplateRemoteStatus(t.Id!, t.Status!, t.RejectedReason))
+            .Select(t => new WhatsAppTemplateRemoteStatus(t.Id!, t.Status!, t.Category, t.RejectedReason))
             .ToList();
+    }
+
+    /// <summary>Deletes a template on Meta's side by name - all language versions of that name are removed together.</summary>
+    public async Task<bool> DeleteTemplateAsync(string whatsAppBusinessAccountId, string templateName, CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.DeleteAsync($"{whatsAppBusinessAccountId}/message_templates?name={Uri.EscapeDataString(templateName)}", cancellationToken);
+        if (response.IsSuccessStatusCode) return true;
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        _logger.LogWarning("Failed to delete template '{TemplateName}': {StatusCode} {Body}", templateName, response.StatusCode, body);
+        return false;
     }
 
     /// <summary>

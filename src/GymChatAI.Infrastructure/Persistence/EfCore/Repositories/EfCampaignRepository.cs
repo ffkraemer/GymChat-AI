@@ -27,4 +27,12 @@ public class EfCampaignRepository : ICampaignRepository
         _context.Campaigns.Add(campaign);
         await _context.SaveChangesAsync(cancellationToken);
     }
+
+    public async Task UpdateAsync(Campaign campaign, CancellationToken cancellationToken = default)
+    {
+        if (_context.Entry(campaign).State == EntityState.Detached)
+            _context.Campaigns.Update(campaign);
+
+        await _context.SaveChangesAsync(cancellationToken);
+    }
 }

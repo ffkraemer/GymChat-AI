@@ -14,6 +14,8 @@ public record FlowResponse(Guid Id, string Name, string? MetaFlowId, string Stat
 
 public record RegisterFlowEncryptionKeyRequest(string PublicKeyPem);
 
+public record SetFlowEndpointRequest(string EndpointUri);
+
 public record TriggerFlowRequest(string RecipientPhoneNumber, string BodyText, string FlowCtaButtonText);
 
 public static class FlowEndpoints
@@ -23,9 +25,9 @@ public static class FlowEndpoints
         var group = app.MapGroup("/api/flows").WithTags("WhatsApp Flows");
         if (requireAuth) group.RequireAuthorization(Policies.Admin);
 
-        var getByGym = group.MapGet("/{gymId:guid}", async (Guid gymId, IWhatsAppFlowRepository repository, CancellationToken ct) =>
+        var getByGym = group.MapGet("/{gymId:guid}", async (Guid gymId, WhatsAppFlowHandler handler, CancellationToken ct) =>
         {
-            var flows = await repository.GetAllByGymAsync(gymId, ct);
+            var flows = await handler.GetVisibleFlowsAsync(gymId, ct);
             return Results.Ok(flows.Select(FlowResponse.From));
         });
         if (requireAuth) getByGym.AddEndpointFilter<GymScopeFilter>();
@@ -67,13 +69,31 @@ public static class FlowEndpoints
             }
         });
 
-        var refreshStatus = group.MapPost("/{gymId:guid}/refresh-statuses", async (Guid gymId, WhatsAppFlowHandler handler, IWhatsAppFlowRepository repository, CancellationToken ct) =>
+        group.MapDelete("/{id:guid}", async (Guid id, HttpContext httpContext, IWhatsAppFlowRepository repository, WhatsAppFlowHandler handler, CancellationToken ct) =>
         {
-            var flows = await repository.GetAllByGymAsync(gymId, ct);
+            var flow = await repository.GetByIdAsync(id, ct);
+            if (flow is null) return Results.NotFound();
+            if (requireAuth && !httpContext.User.IsPlatformAdmin() && flow.GymId != httpContext.User.GetGymId())
+                return Results.Forbid();
+
+            try
+            {
+                await handler.DeleteDraftAsync(id, ct);
+                return Results.NoContent();
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        });
+
+        var refreshStatus = group.MapPost("/{gymId:guid}/refresh-statuses", async (Guid gymId, WhatsAppFlowHandler handler, CancellationToken ct) =>
+        {
+            var flows = await handler.GetVisibleFlowsAsync(gymId, ct);
             foreach (var flow in flows)
                 await handler.RefreshStatusAsync(flow.Id, ct);
 
-            var updated = await repository.GetAllByGymAsync(gymId, ct);
+            var updated = await handler.GetVisibleFlowsAsync(gymId, ct);
             return Results.Ok(updated.Select(FlowResponse.From));
         });
         if (requireAuth) refreshStatus.AddEndpointFilter<GymScopeFilter>();
@@ -93,6 +113,29 @@ public static class FlowEndpoints
             }
         });
         if (requireAuth) registerKey.AddEndpointFilter<GymScopeFilter>();
+
+        // Tells Meta where our Data Exchange endpoint lives for this Flow - required before
+        // publishing a dynamic Flow (ours declares data_api_version, since class types are
+        // gym-specific). The URL changes whenever the ngrok tunnel restarts in development,
+        // so this is a separate, repeatable action rather than a one-time setup step.
+        var setEndpoint = group.MapPost("/{id:guid}/endpoint", async (
+            Guid id, SetFlowEndpointRequest request, HttpContext httpContext, WhatsAppFlowHandler handler, IWhatsAppFlowRepository repository, CancellationToken ct) =>
+        {
+            var flow = await repository.GetByIdAsync(id, ct);
+            if (flow is null) return Results.NotFound();
+            if (requireAuth && !httpContext.User.IsPlatformAdmin() && flow.GymId != httpContext.User.GetGymId())
+                return Results.Forbid();
+
+            try
+            {
+                var success = await handler.SetFlowEndpointAsync(id, request.EndpointUri, ct);
+                return Results.Ok(new { success });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        });
 
         // Sends the Flow-trigger message to a test recipient - useful to try it out before rolling it out broadly.
         group.MapPost("/{id:guid}/trigger", async (

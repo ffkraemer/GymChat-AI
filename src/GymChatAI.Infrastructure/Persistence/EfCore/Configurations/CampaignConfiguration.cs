@@ -16,6 +16,7 @@ public class CampaignConfiguration : IEntityTypeConfiguration<Campaign>
         builder.Property(c => c.MessageTemplate).IsRequired().HasMaxLength(2000);
         builder.Property(c => c.TriggerDayOffset);
         builder.Property(c => c.IsActive).IsRequired();
+        builder.Property(c => c.WhatsAppMessageTemplateId);
 
         builder.HasIndex(c => new { c.GymId, c.Type, c.IsActive });
 

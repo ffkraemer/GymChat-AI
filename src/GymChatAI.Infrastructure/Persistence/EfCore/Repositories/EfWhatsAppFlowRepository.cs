@@ -29,4 +29,13 @@ public class EfWhatsAppFlowRepository : IWhatsAppFlowRepository
 
         await _context.SaveChangesAsync(cancellationToken);
     }
+
+    public async Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var flow = await _context.WhatsAppFlows.FirstOrDefaultAsync(f => f.Id == id, cancellationToken);
+        if (flow is null) return;
+
+        _context.WhatsAppFlows.Remove(flow);
+        await _context.SaveChangesAsync(cancellationToken);
+    }
 }

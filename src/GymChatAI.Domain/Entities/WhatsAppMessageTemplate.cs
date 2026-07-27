@@ -17,6 +17,14 @@ public class WhatsAppMessageTemplate : Entity
 
     public Guid GymId { get; private set; }
 
+    /// <summary>
+    /// Snapshot of the gym's WhatsAppBusinessAccountId at creation time - lets the Portal
+    /// filter out templates that belonged to a WABA the gym has since moved away from
+    /// (e.g. switching from a test WABA to the real one), without deleting the record.
+    /// Null for templates created before this field existed.
+    /// </summary>
+    public string? WhatsAppBusinessAccountId { get; private set; }
+
     /// <summary>Meta requires lowercase letters, numbers, and underscores only.</summary>
     public string Name { get; private set; } = default!;
 
@@ -24,6 +32,13 @@ public class WhatsAppMessageTemplate : Entity
     public string Language { get; private set; } = default!;
 
     public WhatsAppTemplateCategory Category { get; private set; }
+
+    /// <summary>
+    /// What category we actually submitted the template as. Meta can silently reclassify a
+    /// template after review (e.g. Utility -> Marketing) - ActualCategory reflects Meta's
+    /// own current classification once synced, so a mismatch against Category is visible.
+    /// </summary>
+    public string? ActualCategory { get; private set; }
 
     /// <summary>Body text using {VariableName} placeholders, e.g. "Olá {FirstName}! Bem-vindo ao {GymName}.".</summary>
     public string BodyText { get; private set; } = default!;
@@ -37,7 +52,7 @@ public class WhatsAppMessageTemplate : Entity
 
     private WhatsAppMessageTemplate() { }
 
-    public WhatsAppMessageTemplate(Guid gymId, string name, string language, WhatsAppTemplateCategory category, string bodyText)
+    public WhatsAppMessageTemplate(Guid gymId, string name, string language, WhatsAppTemplateCategory category, string bodyText, string? whatsAppBusinessAccountId = null)
     {
         if (string.IsNullOrWhiteSpace(name) || !Regex.IsMatch(name, "^[a-z0-9_]+$"))
             throw new ArgumentException("Template name must contain only lowercase letters, numbers, and underscores.", nameof(name));
@@ -51,6 +66,7 @@ public class WhatsAppMessageTemplate : Entity
         Language = language;
         Category = category;
         BodyText = bodyText;
+        WhatsAppBusinessAccountId = whatsAppBusinessAccountId;
     }
 
     /// <summary>The ordered, de-duplicated list of {VariableName} placeholders in the body - position N maps to Meta's {{N}}.</summary>
@@ -92,9 +108,10 @@ public class WhatsAppMessageTemplate : Entity
 
     public void MarkDisabled() => Status = WhatsAppTemplateStatus.Disabled;
 
-    public void SyncStatus(WhatsAppTemplateStatus status, string? rejectionReason = null)
+    public void SyncStatus(WhatsAppTemplateStatus status, string? actualCategory, string? rejectionReason = null)
     {
         Status = status;
+        ActualCategory = actualCategory;
         RejectionReason = status == WhatsAppTemplateStatus.Rejected ? rejectionReason : null;
     }
 }

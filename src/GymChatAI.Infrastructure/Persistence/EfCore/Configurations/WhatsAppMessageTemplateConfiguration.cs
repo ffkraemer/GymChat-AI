@@ -12,8 +12,10 @@ public class WhatsAppMessageTemplateConfiguration : IEntityTypeConfiguration<Wha
         builder.ConfigureEntityBase();
 
         builder.Property(t => t.Name).IsRequired().HasMaxLength(512);
+        builder.Property(t => t.WhatsAppBusinessAccountId).HasMaxLength(64);
         builder.Property(t => t.Language).IsRequired().HasMaxLength(10);
         builder.Property(t => t.Category).HasConversion<string>().HasMaxLength(20);
+        builder.Property(t => t.ActualCategory).HasMaxLength(20);
         builder.Property(t => t.BodyText).IsRequired().HasMaxLength(2000);
         builder.Property(t => t.Status).HasConversion<string>().HasMaxLength(20);
         builder.Property(t => t.MetaTemplateId).HasMaxLength(128);

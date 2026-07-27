@@ -9,12 +9,18 @@ namespace GymChatAI.Api.Endpoints;
 public record CreateTemplateDraftRequest(string Name, string Language, WhatsAppTemplateCategory Category, string BodyText, Guid? GymId = null);
 
 public record TemplateResponse(
-    Guid Id, string Name, string Language, string Category, string BodyText,
+    Guid Id, string Name, string Language, string Category, string? ActualCategory, bool CategoryMismatch, string BodyText,
     string Status, string? MetaTemplateId, string? RejectionReason, IReadOnlyList<string> VariableNames)
 {
-    public static TemplateResponse From(WhatsAppMessageTemplate template) => new(
-        template.Id, template.Name, template.Language, template.Category.ToString(), template.BodyText,
-        template.Status.ToString(), template.MetaTemplateId, template.RejectionReason, template.ExtractVariableNames());
+    public static TemplateResponse From(WhatsAppMessageTemplate template)
+    {
+        var categoryMismatch = template.ActualCategory is not null
+            && !string.Equals(template.ActualCategory, template.Category.ToString(), StringComparison.OrdinalIgnoreCase);
+
+        return new(
+            template.Id, template.Name, template.Language, template.Category.ToString(), template.ActualCategory, categoryMismatch, template.BodyText,
+            template.Status.ToString(), template.MetaTemplateId, template.RejectionReason, template.ExtractVariableNames());
+    }
 }
 
 public static class TemplateEndpoints
@@ -24,9 +30,11 @@ public static class TemplateEndpoints
         var group = app.MapGroup("/api/templates").WithTags("WhatsApp Templates");
         if (requireAuth) group.RequireAuthorization(Policies.Admin);
 
-        var getByGym = group.MapGet("/{gymId:guid}", async (Guid gymId, IWhatsAppMessageTemplateRepository repository, CancellationToken ct) =>
+        // Filtered to the gym's *current* WABA - hides drafts/templates left behind from a
+        // WABA the gym has since switched away from (e.g. moving off a test WABA).
+        var getByGym = group.MapGet("/{gymId:guid}", async (Guid gymId, WhatsAppTemplateHandler handler, CancellationToken ct) =>
         {
-            var templates = await repository.GetAllByGymAsync(gymId, ct);
+            var templates = await handler.GetVisibleTemplatesAsync(gymId, ct);
             return Results.Ok(templates.Select(TemplateResponse.From));
         });
         if (requireAuth) getByGym.AddEndpointFilter<GymScopeFilter>();
@@ -65,10 +73,27 @@ public static class TemplateEndpoints
             }
         });
 
-        var refreshStatuses = group.MapPost("/{gymId:guid}/refresh-statuses", async (Guid gymId, WhatsAppTemplateHandler handler, IWhatsAppMessageTemplateRepository repository, CancellationToken ct) =>
+        group.MapDelete("/{id:guid}", async (Guid id, IWhatsAppMessageTemplateRepository repository, HttpContext httpContext, WhatsAppTemplateHandler handler, CancellationToken ct) =>
+        {
+            var template = await repository.GetByIdAsync(id, ct);
+            if (template is null) return Results.NotFound();
+            if (requireAuth && !IsOwnedByCaller(template, httpContext)) return Results.Forbid();
+
+            try
+            {
+                await handler.DeleteDraftAsync(id, ct);
+                return Results.NoContent();
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        });
+
+        var refreshStatuses = group.MapPost("/{gymId:guid}/refresh-statuses", async (Guid gymId, WhatsAppTemplateHandler handler, CancellationToken ct) =>
         {
             await handler.RefreshStatusesAsync(gymId, ct);
-            var templates = await repository.GetAllByGymAsync(gymId, ct);
+            var templates = await handler.GetVisibleTemplatesAsync(gymId, ct);
             return Results.Ok(templates.Select(TemplateResponse.From));
         });
         if (requireAuth) refreshStatuses.AddEndpointFilter<GymScopeFilter>();

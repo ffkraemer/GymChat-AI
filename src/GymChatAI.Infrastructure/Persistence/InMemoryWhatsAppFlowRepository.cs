@@ -35,4 +35,10 @@ public class InMemoryWhatsAppFlowRepository : IWhatsAppFlowRepository
         _store.Items[flow.Id] = flow;
         return Task.CompletedTask;
     }
+
+    public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        _store.Items.TryRemove(id, out _);
+        return Task.CompletedTask;
+    }
 }

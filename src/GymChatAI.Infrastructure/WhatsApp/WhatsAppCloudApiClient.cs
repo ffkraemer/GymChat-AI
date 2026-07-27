@@ -130,6 +130,18 @@ public class WhatsAppCloudApiClient : IWhatsAppMessageSender
         return await PostAndExtractMessageIdAsync(fromPhoneNumberId, payload, toPhoneNumber, cancellationToken);
     }
 
+    public async Task<string> SendTemplateMessageAsync(
+        string fromPhoneNumberId,
+        string toPhoneNumber,
+        string templateName,
+        string templateLanguage,
+        IReadOnlyList<string> parameterValues,
+        CancellationToken cancellationToken = default)
+    {
+        var payload = SendTemplateMessageRequest.Create(toPhoneNumber, templateName, templateLanguage, parameterValues);
+        return await PostAndExtractMessageIdAsync(fromPhoneNumberId, payload, toPhoneNumber, cancellationToken);
+    }
+
     private async Task<string> PostAndExtractMessageIdAsync<TPayload>(
         string fromPhoneNumberId, TPayload payload, string toPhoneNumber, CancellationToken cancellationToken)
     {

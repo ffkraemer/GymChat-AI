@@ -32,7 +32,7 @@ public class WhatsAppFlowHandler
 
         var createResult = await _managementClient.CreateFlowAsync(gym.WhatsAppBusinessAccountId, name, categories, cancellationToken);
 
-        var flow = new WhatsAppFlow(gymId, name, flowJson);
+        var flow = new WhatsAppFlow(gymId, name, flowJson, gym.WhatsAppBusinessAccountId);
         flow.MarkCreated(createResult.MetaFlowId);
         await _flowRepository.AddAsync(flow, cancellationToken);
 
@@ -40,6 +40,46 @@ public class WhatsAppFlowHandler
         await _managementClient.UpdateFlowJsonAsync(createResult.MetaFlowId, flowJson, cancellationToken);
 
         return flow;
+    }
+
+    /// <summary>
+    /// Flows for a gym, filtered to the gym's *current* WABA - hides records left over from
+    /// a WABA the gym has since moved away from, without deleting anything. Records created
+    /// before this filtering existed (WhatsAppBusinessAccountId is null) are always shown.
+    /// </summary>
+    public async Task<IReadOnlyList<WhatsAppFlow>> GetVisibleFlowsAsync(Guid gymId, CancellationToken cancellationToken = default)
+    {
+        var gym = await _gymRepository.GetByIdAsync(gymId, cancellationToken)
+            ?? throw new InvalidOperationException($"Gym {gymId} not found.");
+
+        var flows = await _flowRepository.GetAllByGymAsync(gymId, cancellationToken);
+
+        return flows
+            .Where(f => f.WhatsAppBusinessAccountId is null || f.WhatsAppBusinessAccountId == gym.WhatsAppBusinessAccountId)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Deletes a draft flow, on Meta's side first (unlike draft templates, a Flow already
+    /// exists on Meta as soon as it's created locally - CreateAsync above calls CreateFlowAsync
+    /// immediately) and then locally. Published flows can't be deleted at all - only deprecated.
+    /// </summary>
+    public async Task DeleteDraftAsync(Guid flowId, CancellationToken cancellationToken = default)
+    {
+        var flow = await _flowRepository.GetByIdAsync(flowId, cancellationToken)
+            ?? throw new InvalidOperationException($"Flow {flowId} not found.");
+
+        if (flow.Status != WhatsAppFlowStatus.Draft)
+            throw new InvalidOperationException("Only draft flows can be deleted - a published flow can only be deprecated.");
+
+        if (flow.MetaFlowId is not null)
+        {
+            var deleted = await _managementClient.DeleteFlowAsync(flow.MetaFlowId, cancellationToken);
+            if (!deleted)
+                throw new InvalidOperationException("Meta refused to delete this flow - it may already be in use by an active session.");
+        }
+
+        await _flowRepository.DeleteAsync(flowId, cancellationToken);
     }
 
     public async Task<IReadOnlyList<WhatsAppFlowValidationError>> UpdateFlowJsonAsync(Guid flowId, string flowJson, CancellationToken cancellationToken = default)
@@ -65,12 +105,30 @@ public class WhatsAppFlowHandler
         if (flow.MetaFlowId is null)
             throw new InvalidOperationException("This flow hasn't been created on Meta's side yet.");
 
-        var published = await _managementClient.PublishFlowAsync(flow.MetaFlowId, cancellationToken);
+        var (published, errorMessage) = await _managementClient.PublishFlowAsync(flow.MetaFlowId, cancellationToken);
         if (!published)
-            throw new InvalidOperationException("Meta rejected the publish request - check the flow's validation errors.");
+            throw new InvalidOperationException($"Meta rejected the publish request: {errorMessage}");
 
         flow.MarkPublished();
         await _flowRepository.UpdateAsync(flow, cancellationToken);
+    }
+
+    /// <summary>
+    /// Tells Meta where our Data Exchange endpoint lives, for this Flow. Needed because our
+    /// preferences form declares dynamic data (data_api_version) - Meta refuses to publish a
+    /// dynamic Flow without a reachable endpoint configured. Separate, explicit step (rather
+    /// than baked into CreateAsync) since the URL depends on the current ngrok tunnel in
+    /// development, and changes independently of the Flow's own lifecycle.
+    /// </summary>
+    public async Task<bool> SetFlowEndpointAsync(Guid flowId, string endpointUri, CancellationToken cancellationToken = default)
+    {
+        var flow = await _flowRepository.GetByIdAsync(flowId, cancellationToken)
+            ?? throw new InvalidOperationException($"Flow {flowId} not found.");
+
+        if (flow.MetaFlowId is null)
+            throw new InvalidOperationException("This flow hasn't been created on Meta's side yet.");
+
+        return await _managementClient.SetFlowEndpointAsync(flow.MetaFlowId, endpointUri, cancellationToken);
     }
 
     public async Task RefreshStatusAsync(Guid flowId, CancellationToken cancellationToken = default)
