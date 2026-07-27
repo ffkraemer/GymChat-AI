@@ -20,5 +20,11 @@ public class WhatsAppFlowConfiguration : IEntityTypeConfiguration<WhatsAppFlow>
         builder.HasIndex(f => f.GymId);
 
         builder.HasOne<Gym>().WithMany().HasForeignKey(f => f.GymId).OnDelete(DeleteBehavior.NoAction);
+
+        builder.HasMany(f => f.Screens)
+            .WithOne()
+            .HasForeignKey(s => s.WhatsAppFlowId)
+            .OnDelete(DeleteBehavior.Cascade);
+        builder.Navigation(f => f.Screens).UsePropertyAccessMode(PropertyAccessMode.Field);
     }
 }

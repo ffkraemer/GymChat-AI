@@ -151,3 +151,40 @@ public enum WhatsAppFlowStatus
     Published = 2,
     Deprecated = 3
 }
+
+/// <summary>A component type available in the Flow Designer, mapped to Meta's native WhatsApp Flow components.</summary>
+public enum FlowComponentType
+{
+    TextHeading = 1,
+    TextBody = 2,
+    TextInput = 3,
+    Dropdown = 4,
+    CheckboxGroup = 5,
+    RadioButtonsGroup = 6,
+
+    /// <summary>Every screen ends with exactly one Footer - its action (Navigate/Complete) determines what happens next.</summary>
+    Footer = 7
+}
+
+/// <summary>What a screen's Footer button does when tapped.</summary>
+public enum FlowFooterAction
+{
+    /// <summary>Moves to another screen in the same Flow (round-trips through the Data Exchange endpoint for dynamic data).</summary>
+    Navigate = 1,
+
+    /// <summary>Ends the Flow and delivers the collected answers via the normal WhatsApp webhook (nfm_reply).</summary>
+    Complete = 2
+}
+
+/// <summary>Where a Dropdown/CheckboxGroup/RadioButtonsGroup's options come from.</summary>
+public enum FlowDesignerOptionsSource
+{
+    /// <summary>Options are typed directly into the component by whoever built the Flow.</summary>
+    Static = 1,
+
+    /// <summary>One row per active ClassType of the gym.</summary>
+    GymClassTypes = 2,
+
+    /// <summary>The 7 days of the week.</summary>
+    DaysOfWeek = 3
+}

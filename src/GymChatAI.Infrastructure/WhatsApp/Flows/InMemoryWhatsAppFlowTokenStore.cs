@@ -8,10 +8,10 @@ public class InMemoryWhatsAppFlowTokenStore : IWhatsAppFlowTokenStore
 {
     private static readonly ConcurrentDictionary<string, WhatsAppFlowTokenContext> Tokens = new();
 
-    public string CreateToken(Guid gymId, string contactPhoneNumber)
+    public string CreateToken(Guid gymId, string contactPhoneNumber, Guid flowId)
     {
         var token = Guid.NewGuid().ToString("N");
-        Tokens[token] = new WhatsAppFlowTokenContext(gymId, contactPhoneNumber);
+        Tokens[token] = new WhatsAppFlowTokenContext(gymId, contactPhoneNumber, flowId);
         return token;
     }
 

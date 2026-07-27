@@ -11,10 +11,17 @@ public class EfWhatsAppFlowRepository : IWhatsAppFlowRepository
     public EfWhatsAppFlowRepository(GymChatDbContext context) => _context = context;
 
     public Task<WhatsAppFlow?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) =>
-        _context.WhatsAppFlows.FirstOrDefaultAsync(f => f.Id == id, cancellationToken);
+        _context.WhatsAppFlows
+            .Include(f => f.Screens)
+            .ThenInclude(s => s.Components)
+            .FirstOrDefaultAsync(f => f.Id == id, cancellationToken);
 
     public async Task<IReadOnlyList<WhatsAppFlow>> GetAllByGymAsync(Guid gymId, CancellationToken cancellationToken = default) =>
-        await _context.WhatsAppFlows.Where(f => f.GymId == gymId).ToListAsync(cancellationToken);
+        await _context.WhatsAppFlows
+            .Include(f => f.Screens)
+            .ThenInclude(s => s.Components)
+            .Where(f => f.GymId == gymId)
+            .ToListAsync(cancellationToken);
 
     public async Task AddAsync(WhatsAppFlow flow, CancellationToken cancellationToken = default)
     {

@@ -1,26 +1,36 @@
 using System.Text.Json;
 using GymChatAI.Application.Abstractions;
+using GymChatAI.Domain.Entities;
+using GymChatAI.Domain.Enums;
 
 namespace GymChatAI.Application.Flows;
 
 /// <summary>
 /// Interprets a decrypted Data Exchange request and builds the (still-plaintext) JSON
-/// response. Given our PreferencesFlowJsonBuilder screen is a single terminal screen (its
-/// Footer uses the "complete" action, not "navigate"), this only ever needs to handle:
+/// response - the runtime counterpart to FlowJsonCompiler, which prepares the JSON at
+/// design time. Handles:
 /// - "ping": Meta's periodic health check of the endpoint.
-/// - "INIT": the first (and only) screen load, where we inject the gym's ClassTypes.
-/// The final form submission ("complete") does NOT come through this endpoint - Meta
-/// delivers it as a regular webhook message (interactive.type == "nfm_reply"), handled by
-/// ProcessIncomingMessageHandler instead.
+/// - "INIT": the first screen load - returns its dynamic option data (if any).
+/// - "data_exchange": a "navigate" Footer was tapped - since FlowJsonCompiler already wires
+///   every screen to forward all prior answers via its payload ({form.X}/{data.X}), this
+///   just needs to pass that forwarded data through unchanged, adding whatever NEW dynamic
+///   option data the next screen itself needs. No server-side session state required - Meta
+///   itself carries the accumulated answers on every round trip.
+/// The final "complete" submission does NOT come through this endpoint - Meta delivers it as
+/// a regular webhook message (interactive.type == "nfm_reply"), handled by
+/// WhatsAppFlowCompletionHandler instead.
 /// </summary>
 public class WhatsAppFlowDataExchangeHandler
 {
     private readonly IWhatsAppFlowTokenStore _tokenStore;
+    private readonly IWhatsAppFlowRepository _flowRepository;
     private readonly IClassTypeRepository _classTypeRepository;
 
-    public WhatsAppFlowDataExchangeHandler(IWhatsAppFlowTokenStore tokenStore, IClassTypeRepository classTypeRepository)
+    public WhatsAppFlowDataExchangeHandler(
+        IWhatsAppFlowTokenStore tokenStore, IWhatsAppFlowRepository flowRepository, IClassTypeRepository classTypeRepository)
     {
         _tokenStore = tokenStore;
+        _flowRepository = flowRepository;
         _classTypeRepository = classTypeRepository;
     }
 
@@ -36,26 +46,87 @@ public class WhatsAppFlowDataExchangeHandler
 
         var flowToken = root.TryGetProperty("flow_token", out var tokenEl) ? tokenEl.GetString() : null;
         var context = flowToken is not null ? _tokenStore.Resolve(flowToken) : null;
-
         if (context is null)
-        {
-            // Unknown/expired token - nothing sensible to return; acknowledge and let the
-            // Flow session fail gracefully on WhatsApp's side rather than throwing here.
             return JsonSerializer.Serialize(new { data = new { acknowledged = true } });
-        }
+
+        var flow = await _flowRepository.GetByIdAsync(context.FlowId, cancellationToken);
+        if (flow is null)
+            return JsonSerializer.Serialize(new { data = new { acknowledged = true } });
+
+        var orderedScreens = flow.Screens.OrderBy(s => s.Order).ToList();
 
         if (action == "INIT")
         {
-            var classTypes = await _classTypeRepository.GetActiveByGymAsync(context.GymId, cancellationToken);
-            var classTypeItems = classTypes.Select(c => new { id = c.Id.ToString(), title = c.Name }).ToList();
+            var firstScreen = orderedScreens.FirstOrDefault();
+            if (firstScreen is null)
+                return JsonSerializer.Serialize(new { data = new { acknowledged = true } });
 
-            return JsonSerializer.Serialize(new
-            {
-                screen = "PREFERENCES",
-                data = new { class_types = classTypeItems }
-            });
+            var dynamicData = await BuildDynamicOptionsAsync(firstScreen, context.GymId, cancellationToken);
+            return JsonSerializer.Serialize(new { screen = firstScreen.ScreenId, data = dynamicData });
         }
 
-        return JsonSerializer.Serialize(new { data = new { acknowledged = true } });
+        // action == "data_exchange": a Footer with a "navigate" action was tapped.
+        var currentScreenId = root.TryGetProperty("screen", out var screenEl) ? screenEl.GetString() : null;
+        var currentScreen = orderedScreens.FirstOrDefault(s => s.ScreenId == currentScreenId);
+        var nextScreen = currentScreen is null ? null : orderedScreens.FirstOrDefault(s => s.Order == currentScreen.Order + 1);
+
+        if (nextScreen is null)
+            return JsonSerializer.Serialize(new { data = new { acknowledged = true } });
+
+        // Everything the previous screen forwarded (all answers so far, per FlowJsonCompiler's payload wiring) - pass it straight through.
+        var mergedData = new Dictionary<string, object?>();
+        if (root.TryGetProperty("data", out var dataEl) && dataEl.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var prop in dataEl.EnumerateObject())
+                mergedData[prop.Name] = JsonSerializer.Deserialize<object?>(prop.Value.GetRawText());
+        }
+
+        // Add whatever dynamic option data the NEXT screen itself needs.
+        var nextDynamicData = await BuildDynamicOptionsAsync(nextScreen, context.GymId, cancellationToken);
+        foreach (var (key, value) in nextDynamicData)
+            mergedData[key] = value;
+
+        return JsonSerializer.Serialize(new { screen = nextScreen.ScreenId, data = mergedData });
     }
+
+    /// <summary>Resolves every dynamic-source option component on a screen (e.g. GymClassTypes) into an actual "{name}_options" data property.</summary>
+    private async Task<Dictionary<string, object>> BuildDynamicOptionsAsync(FlowScreen screen, Guid gymId, CancellationToken cancellationToken)
+    {
+        var result = new Dictionary<string, object>();
+
+        foreach (var component in screen.Components.Where(IsDynamicOptionsComponent))
+        {
+            var options = component.OptionsSource switch
+            {
+                FlowDesignerOptionsSource.GymClassTypes => await BuildClassTypeOptionsAsync(gymId, cancellationToken),
+                FlowDesignerOptionsSource.DaysOfWeek => BuildDaysOfWeekOptions(),
+                _ => new List<object>()
+            };
+
+            result[$"{component.VariableName}_options"] = options;
+        }
+
+        return result;
+    }
+
+    private async Task<List<object>> BuildClassTypeOptionsAsync(Guid gymId, CancellationToken cancellationToken)
+    {
+        var classTypes = await _classTypeRepository.GetActiveByGymAsync(gymId, cancellationToken);
+        return classTypes.Select(c => (object)new { id = c.Id.ToString(), title = c.Name }).ToList();
+    }
+
+    private static List<object> BuildDaysOfWeekOptions() =>
+    [
+        new { id = ((int)DayOfWeek.Monday).ToString(), title = "Segunda-feira" },
+        new { id = ((int)DayOfWeek.Tuesday).ToString(), title = "Terça-feira" },
+        new { id = ((int)DayOfWeek.Wednesday).ToString(), title = "Quarta-feira" },
+        new { id = ((int)DayOfWeek.Thursday).ToString(), title = "Quinta-feira" },
+        new { id = ((int)DayOfWeek.Friday).ToString(), title = "Sexta-feira" },
+        new { id = ((int)DayOfWeek.Saturday).ToString(), title = "Sábado" },
+        new { id = ((int)DayOfWeek.Sunday).ToString(), title = "Domingo" },
+    ];
+
+    private static bool IsDynamicOptionsComponent(FlowComponent component) =>
+        component.Type is FlowComponentType.Dropdown or FlowComponentType.CheckboxGroup or FlowComponentType.RadioButtonsGroup
+        && component.OptionsSource is FlowDesignerOptionsSource.GymClassTypes or FlowDesignerOptionsSource.DaysOfWeek;
 }
