@@ -4,7 +4,7 @@
 
 Welcome to the official GymChat AI documentation.
 
-GymChat AI is an AI-powered customer engagement and loyalty platform for gyms, built around WhatsApp and Azure OpenAI.
+GymChat AI is a WhatsApp-based relationship and loyalty platform for gyms, powered by AI (Gemini, OpenAI, or Azure OpenAI, interchangeably).
 
 ---
 
@@ -15,21 +15,27 @@ GymChat AI is an AI-powered customer engagement and loyalty platform for gyms, b
 - Product Vision
 - Product Backlog
 - Roadmap
+- Business Requirements
 
 ### Architecture
 
 - Domain Model
 - Solution Architecture
+- AI Architecture
+- Loyalty Engine
 
 ### Integrations
 
 - WhatsApp Integration
-- Azure OpenAI Integration
 
 ### Operations
 
 - Security
 - Deployment Guide
+
+### Reference
+
+- Endpoints
 
 ---
 
@@ -38,5 +44,12 @@ GymChat AI is an AI-powered customer engagement and loyalty platform for gyms, b
 - [Product Vision](product-vision.md)
 - [Product Backlog](product-backlog.md)
 - [Roadmap](roadmap.md)
+- [Business Requirements](business-requirements.md)
 - [Domain Model](domain-model.md)
 - [Solution Architecture](solution-architecture.md)
+- [AI Architecture](ai-architecture.md)
+- [Loyalty Engine](loyalty-engine.md)
+- [WhatsApp Integration](whatsapp-integration.md)
+- [Security](security.md)
+- [Deployment Guide](deployment-guide.md)
+- [Endpoints](GymChatAI-endpoints.md)
