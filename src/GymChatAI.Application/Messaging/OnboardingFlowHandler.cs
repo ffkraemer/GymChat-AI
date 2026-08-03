@@ -55,6 +55,7 @@ public class OnboardingFlowHandler
             $"Bem-vindo(a) ao {gym.Name}! 👋 Queres receber sugestões de aulas por WhatsApp, no dia e hora que preferires?",
             cancellationToken);
 
+
         conversation.SetFlowStep(ConversationFlowStep.AwaitingOnboardingConsent);
         await PersistPreferenceAsync(preference, isNew, cancellationToken);
     }

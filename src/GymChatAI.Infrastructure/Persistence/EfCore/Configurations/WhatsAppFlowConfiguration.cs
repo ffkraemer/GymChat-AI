@@ -1,8 +1,7 @@
 using GymChatAI.Domain.Entities;
+using GymChatAI.Infrastructure.Persistence.EfCore.Configurations;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
-
-namespace GymChatAI.Infrastructure.Persistence.EfCore.Configurations;
 
 public class WhatsAppFlowConfiguration : IEntityTypeConfiguration<WhatsAppFlow>
 {
@@ -16,6 +15,8 @@ public class WhatsAppFlowConfiguration : IEntityTypeConfiguration<WhatsAppFlow>
         builder.Property(f => f.MetaFlowId).HasMaxLength(128);
         builder.Property(f => f.Status).HasConversion<string>().HasMaxLength(20);
         builder.Property(f => f.FlowJson).IsRequired().HasColumnType("nvarchar(max)");
+        builder.Property(f => f.IsDynamic).IsRequired();
+        builder.Property(f => f.EndpointUri).HasMaxLength(500);
 
         builder.HasIndex(f => f.GymId);
 

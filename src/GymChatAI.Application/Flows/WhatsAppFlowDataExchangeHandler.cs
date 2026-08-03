@@ -89,7 +89,7 @@ public class WhatsAppFlowDataExchangeHandler
         return JsonSerializer.Serialize(new { screen = nextScreen.ScreenId, data = mergedData });
     }
 
-    /// <summary>Resolves every dynamic-source option component on a screen (e.g. GymClassTypes) into an actual "{name}_options" data property.</summary>
+    /// <summary>Resolves every dynamic-source option component on a screen (e.g. GymClassTypes, DaysOfWeek, TimeWindows) into an actual "{name}_options" data property.</summary>
     private async Task<Dictionary<string, object>> BuildDynamicOptionsAsync(FlowScreen screen, Guid gymId, CancellationToken cancellationToken)
     {
         var result = new Dictionary<string, object>();
@@ -100,6 +100,7 @@ public class WhatsAppFlowDataExchangeHandler
             {
                 FlowDesignerOptionsSource.GymClassTypes => await BuildClassTypeOptionsAsync(gymId, cancellationToken),
                 FlowDesignerOptionsSource.DaysOfWeek => BuildDaysOfWeekOptions(),
+                FlowDesignerOptionsSource.TimeWindows => BuildTimeWindowOptions(),
                 _ => new List<object>()
             };
 
@@ -126,7 +127,15 @@ public class WhatsAppFlowDataExchangeHandler
         new { id = ((int)DayOfWeek.Sunday).ToString(), title = "Domingo" },
     ];
 
+    /// <summary>Morning/Afternoon/Evening - matches NotificationTimeWindow's values (morning/afternoon/evening), so a Flow submission maps directly onto WhatsAppFlowCompletionHandler's existing parsing.</summary>
+    private static List<object> BuildTimeWindowOptions() =>
+    [
+        new { id = "morning", title = "Manhã" },
+        new { id = "afternoon", title = "Tarde" },
+        new { id = "evening", title = "Noite" },
+    ];
+
     private static bool IsDynamicOptionsComponent(FlowComponent component) =>
         component.Type is FlowComponentType.Dropdown or FlowComponentType.CheckboxGroup or FlowComponentType.RadioButtonsGroup
-        && component.OptionsSource is FlowDesignerOptionsSource.GymClassTypes or FlowDesignerOptionsSource.DaysOfWeek;
+        && component.OptionsSource is FlowDesignerOptionsSource.GymClassTypes or FlowDesignerOptionsSource.DaysOfWeek or FlowDesignerOptionsSource.TimeWindows;
 }

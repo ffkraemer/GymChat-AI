@@ -12,10 +12,15 @@ namespace GymChatAI.Application.Flows;
 /// collected so far (this screen's own inputs via {form.X}, everything from earlier screens
 /// via {data.X}, since that's how it arrives after being forwarded) - otherwise data from
 /// screen 1 would be lost by the time the flow reaches its terminal screen.
+///
+/// isDynamic controls whether "data_api_version" is emitted at all - that property is what
+/// tells Meta this flow requires a Data Exchange endpoint. A purely static flow (fixed
+/// questions/options only, no GymClassTypes/DaysOfWeek sources) should never declare it, so
+/// it never needs an endpoint configured.
 /// </summary>
 public static class FlowJsonCompiler
 {
-    public static string Compile(IReadOnlyList<FlowScreen> screens)
+    public static string Compile(IReadOnlyList<FlowScreen> screens, bool isDynamic)
     {
         var orderedScreens = screens.OrderBy(s => s.Order).ToList();
 
@@ -41,20 +46,23 @@ public static class FlowJsonCompiler
                 : [];
 
             // "data" schema this screen expects to receive - everything forwarded from earlier
-            // screens, plus a generated "_options" property for each of its own dynamic-source
-            // input components (populated by our Data Exchange endpoint).
+            // screens, plus (only for dynamic flows) a generated "_options" property for each
+            // of its own dynamic-source input components (populated by our Data Exchange endpoint).
             var dataProperties = new Dictionary<string, object>();
             foreach (var carried in cumulativeBeforeScreen)
                 dataProperties[carried] = new { type = "string" };
 
-            foreach (var component in screen.Components.Where(c => IsOptionsComponent(c) && c.OptionsSource != FlowDesignerOptionsSource.Static))
+            if (isDynamic)
             {
-                dataProperties[$"{component.VariableName}_options"] = new
+                foreach (var component in screen.Components.Where(c => IsOptionsComponent(c) && c.OptionsSource != FlowDesignerOptionsSource.Static))
                 {
-                    type = "array",
-                    items = new { type = "object", properties = new { id = new { type = "string" }, title = new { type = "string" } } },
-                    __example__ = new[] { new { id = "example-id", title = "Exemplo" } }
-                };
+                    dataProperties[$"{component.VariableName}_options"] = new
+                    {
+                        type = "array",
+                        items = new { type = "object", properties = new { id = new { type = "string" }, title = new { type = "string" } } },
+                        __example__ = new[] { new { id = "example-id", title = "Exemplo" } }
+                    };
+                }
             }
 
             // Every variable collected up to and including this screen - referenced via
@@ -67,24 +75,18 @@ public static class FlowJsonCompiler
 
             var children = new List<object>();
             foreach (var component in screen.Components.OrderBy(c => c.Order))
-                children.Add(component.Type == FlowComponentType.Footer ? CompileFooter(component, footerPayload) : CompileComponent(component));
+                children.Add(component.Type == FlowComponentType.Footer ? CompileFooter(component, footerPayload) : CompileComponent(component, isDynamic));
 
-            var screenJson = new Dictionary<string, object>
+            screenJsons.Add(new Dictionary<string, object>
             {
                 ["id"] = screen.ScreenId,
                 ["title"] = screen.Title,
                 ["terminal"] = isTerminal,
                 ["data"] = dataProperties,
                 ["layout"] = new Dictionary<string, object> { ["type"] = "SingleColumnLayout", ["children"] = children }
-            };
+            });
 
-            // Meta requires at least one terminal screen to explicitly mark 'success' - this
-            // is separate from 'terminal' itself (which only says "this ends the flow", not
-            // "this end is a successful one"). Every terminal screen we compile represents a
-            // completed submission, so it's always a success.
-            if (isTerminal) screenJson["success"] = true;
-
-            screenJsons.Add(screenJson);
+            if (isTerminal) screenJsons[^1]["success"] = true;
 
             cumulativeBeforeScreen = cumulativeBeforeScreen.Concat(ownVariables).Distinct().ToList();
         }
@@ -92,15 +94,18 @@ public static class FlowJsonCompiler
         var root = new Dictionary<string, object>
         {
             ["version"] = "7.2",
-            ["data_api_version"] = "3.0",
             ["routing_model"] = routingModel,
             ["screens"] = screenJsons
         };
 
+        // Only declared when the flow actually needs an endpoint - this is the property
+        // Meta reads to decide whether it should call our Data Exchange endpoint at all.
+        if (isDynamic) root["data_api_version"] = "3.0";
+
         return JsonSerializer.Serialize(root, new JsonSerializerOptions { WriteIndented = true });
     }
 
-    private static object CompileComponent(FlowComponent component) => component.Type switch
+    private static object CompileComponent(FlowComponent component, bool isDynamic) => component.Type switch
     {
         FlowComponentType.TextHeading => new Dictionary<string, object> { ["type"] = "TextHeading", ["text"] = component.Label },
         FlowComponentType.TextBody => new Dictionary<string, object> { ["type"] = "TextBody", ["text"] = component.Label },
@@ -119,16 +124,19 @@ public static class FlowJsonCompiler
             ["name"] = component.VariableName!,
             ["label"] = component.Label,
             ["required"] = component.Required,
-            ["data-source"] = BuildDataSource(component)
+            ["data-source"] = BuildDataSource(component, isDynamic)
         },
 
         _ => throw new InvalidOperationException($"CompileComponent doesn't handle {component.Type} - Footer is compiled separately.")
     };
 
-    private static object BuildDataSource(FlowComponent component)
+    private static object BuildDataSource(FlowComponent component, bool isDynamic)
     {
-        if (component.OptionsSource == FlowDesignerOptionsSource.Static)
+        if (component.OptionsSource == FlowDesignerOptionsSource.Static || !isDynamic)
         {
+            // Falls back to whatever static options exist even if a dynamic source was picked
+            // on a non-dynamic flow - a misconfiguration, but this avoids emitting a reference
+            // to a "_options" data property that would never actually get populated.
             return JsonSerializer.Deserialize<List<Dictionary<string, string>>>(component.StaticOptionsJson ?? "[]") ?? [];
         }
 

@@ -186,5 +186,8 @@ public enum FlowDesignerOptionsSource
     GymClassTypes = 2,
 
     /// <summary>The 7 days of the week.</summary>
-    DaysOfWeek = 3
+    DaysOfWeek = 3,
+
+    /// <summary>Morning / Afternoon / Evening.</summary>
+    TimeWindows = 4
 }

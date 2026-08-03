@@ -36,7 +36,7 @@ GymChat AI is a WhatsApp-based relationship and loyalty platform for gyms, power
 ### Reference
 
 - Endpoints
-
+- Glossary
 ---
 
 ## Quick Links
@@ -53,3 +53,4 @@ GymChat AI is a WhatsApp-based relationship and loyalty platform for gyms, power
 - [Security](security.md)
 - [Deployment Guide](deployment-guide.md)
 - [Endpoints](GymChatAI-endpoints.md)
+- [Glossary](concepts-glossary.md)

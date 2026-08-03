@@ -7,9 +7,10 @@ namespace GymChatAI.Api.Endpoints;
 
 public record CreateFlowRequestBody(string Name, Guid? GymId = null);
 
-public record FlowResponse(Guid Id, string Name, string? MetaFlowId, string Status, int ScreenCount)
+public record FlowResponse(Guid Id, string Name, string? MetaFlowId, string Status, int ScreenCount, bool IsDynamic, string? EndpointUri)
 {
-    public static FlowResponse From(WhatsAppFlow flow) => new(flow.Id, flow.Name, flow.MetaFlowId, flow.Status.ToString(), flow.Screens.Count);
+    public static FlowResponse From(WhatsAppFlow flow) => new(
+        flow.Id, flow.Name, flow.MetaFlowId, flow.Status.ToString(), flow.Screens.Count, flow.IsDynamic, flow.EndpointUri);
 }
 
 public record RegisterFlowEncryptionKeyRequest(string PublicKeyPem);
@@ -35,7 +36,12 @@ public record ScreenResponse(string ScreenId, string Title, IReadOnlyList<Compon
         s.ScreenId, s.Title, s.Components.OrderBy(c => c.Order).Select(ComponentResponse.From).ToList());
 }
 
-public record ReplaceScreensRequest(IReadOnlyList<ScreenDefinition> Screens);
+/// <summary>
+/// IsDynamic decides whether this flow needs a Data Exchange endpoint at all - see
+/// WhatsAppFlow.IsDynamic. A purely static flow (fixed questions/options only) should send
+/// false here and never has to configure an endpoint.
+/// </summary>
+public record ReplaceScreensRequest(IReadOnlyList<ScreenDefinition> Screens, bool IsDynamic);
 
 public record UpdateFlowJsonRequest(string FlowJson);
 
@@ -53,79 +59,7 @@ public static class FlowEndpoints
         });
         if (requireAuth) getByGym.AddEndpointFilter<GymScopeFilter>();
 
-        // Raw JSON editing (an alternative to the structured screens editor above) - lets an
-        // admin hand-edit or upload a Flow JSON directly, closer to Meta's own tool.
-        group.MapGet("/{id:guid}/json", async (Guid id, HttpContext httpContext, IWhatsAppFlowRepository repository, CancellationToken ct) =>
-        {
-            var flow = await repository.GetByIdAsync(id, ct);
-            if (flow is null) return Results.NotFound();
-            if (requireAuth && !httpContext.User.IsPlatformAdmin() && flow.GymId != httpContext.User.GetGymId())
-                return Results.Forbid();
-
-            return Results.Ok(new { flowJson = flow.FlowJson });
-        });
-
-        group.MapPut("/{id:guid}/json", async (
-            Guid id, UpdateFlowJsonRequest request, HttpContext httpContext, WhatsAppFlowHandler handler, IWhatsAppFlowRepository repository, CancellationToken ct) =>
-        {
-            var flow = await repository.GetByIdAsync(id, ct);
-            if (flow is null) return Results.NotFound();
-            if (requireAuth && !httpContext.User.IsPlatformAdmin() && flow.GymId != httpContext.User.GetGymId())
-                return Results.Forbid();
-
-            try
-            {
-                System.Text.Json.JsonDocument.Parse(request.FlowJson);
-            }
-            catch (System.Text.Json.JsonException ex)
-            {
-                return Results.BadRequest(new { error = $"JSON inválido: {ex.Message}" });
-            }
-
-            try
-            {
-                var validationErrors = await handler.UpdateFlowJsonAsync(id, request.FlowJson, ct);
-                return Results.Ok(new { validationErrors });
-            }
-            catch (InvalidOperationException ex)
-            {
-                return Results.BadRequest(new { error = ex.Message });
-            }
-        });
-
-        // Loads a flow's current screen graph, for the Flow Designer to edit.
-        group.MapGet("/{id:guid}/screens", async (Guid id, HttpContext httpContext, IWhatsAppFlowRepository repository, CancellationToken ct) =>
-        {
-            var flow = await repository.GetByIdAsync(id, ct);
-            if (flow is null) return Results.NotFound();
-            if (requireAuth && !httpContext.User.IsPlatformAdmin() && flow.GymId != httpContext.User.GetGymId())
-                return Results.Forbid();
-
-            var screens = flow.Screens.OrderBy(s => s.Order).Select(ScreenResponse.From).ToList();
-            return Results.Ok(screens);
-        });
-
-        // Saves the Flow Designer's screen graph - always the complete set, not incremental diffs.
-        group.MapPost("/{id:guid}/screens", async (
-            Guid id, ReplaceScreensRequest request, HttpContext httpContext, WhatsAppFlowHandler handler, IWhatsAppFlowRepository repository, CancellationToken ct) =>
-        {
-            var flow = await repository.GetByIdAsync(id, ct);
-            if (flow is null) return Results.NotFound();
-            if (requireAuth && !httpContext.User.IsPlatformAdmin() && flow.GymId != httpContext.User.GetGymId())
-                return Results.Forbid();
-
-            try
-            {
-                var validationErrors = await handler.ReplaceScreensAsync(id, request.Screens, ct);
-                return Results.Ok(new { validationErrors });
-            }
-            catch (InvalidOperationException ex)
-            {
-                return Results.BadRequest(new { error = ex.Message });
-            }
-        });
-
-        // Creates the Flow on Meta's side (with our default preferences Flow JSON) and saves it locally.
+        // Creates the Flow on Meta's side (with a minimal, valid placeholder screen) and saves it locally.
         group.MapPost("/", async (CreateFlowRequestBody request, HttpContext httpContext, WhatsAppFlowHandler handler, CancellationToken ct) =>
         {
             var gymId = requireAuth ? httpContext.User.GetGymId() : request.GymId;
@@ -190,7 +124,6 @@ public static class FlowEndpoints
         });
         if (requireAuth) refreshStatus.AddEndpointFilter<GymScopeFilter>();
 
-        // One-time per-WABA setup: registers our RSA public key so Meta can encrypt Data Exchange requests to us.
         var registerKey = group.MapPost("/{gymId:guid}/encryption-key", async (
             Guid gymId, RegisterFlowEncryptionKeyRequest request, WhatsAppFlowHandler handler, CancellationToken ct) =>
         {
@@ -206,10 +139,7 @@ public static class FlowEndpoints
         });
         if (requireAuth) registerKey.AddEndpointFilter<GymScopeFilter>();
 
-        // Tells Meta where our Data Exchange endpoint lives for this Flow - required before
-        // publishing a dynamic Flow (ours declares data_api_version, since class types are
-        // gym-specific). The URL changes whenever the ngrok tunnel restarts in development,
-        // so this is a separate, repeatable action rather than a one-time setup step.
+        // Only meaningful for flows marked Dynamic - the URL Meta calls for live data.
         var setEndpoint = group.MapPost("/{id:guid}/endpoint", async (
             Guid id, SetFlowEndpointRequest request, HttpContext httpContext, WhatsAppFlowHandler handler, IWhatsAppFlowRepository repository, CancellationToken ct) =>
         {
@@ -229,7 +159,6 @@ public static class FlowEndpoints
             }
         });
 
-        // Sends the Flow-trigger message to a test recipient - useful to try it out before rolling it out broadly.
         group.MapPost("/{id:guid}/trigger", async (
             Guid id,
             TriggerFlowRequest request,
@@ -258,6 +187,77 @@ public static class FlowEndpoints
                 flow.MetaFlowId, flowToken, firstScreen.ScreenId, ct);
 
             return Results.Ok(new { whatsAppMessageId = wamid });
+        });
+
+        // Loads a flow's current screen graph, for the Flow Designer to edit.
+        group.MapGet("/{id:guid}/screens", async (Guid id, HttpContext httpContext, IWhatsAppFlowRepository repository, CancellationToken ct) =>
+        {
+            var flow = await repository.GetByIdAsync(id, ct);
+            if (flow is null) return Results.NotFound();
+            if (requireAuth && !httpContext.User.IsPlatformAdmin() && flow.GymId != httpContext.User.GetGymId())
+                return Results.Forbid();
+
+            var screens = flow.Screens.OrderBy(s => s.Order).Select(ScreenResponse.From).ToList();
+            return Results.Ok(screens);
+        });
+
+        // Saves the Flow Designer's screen graph - always the complete set, not incremental diffs.
+        group.MapPost("/{id:guid}/screens", async (
+            Guid id, ReplaceScreensRequest request, HttpContext httpContext, WhatsAppFlowHandler handler, IWhatsAppFlowRepository repository, CancellationToken ct) =>
+        {
+            var flow = await repository.GetByIdAsync(id, ct);
+            if (flow is null) return Results.NotFound();
+            if (requireAuth && !httpContext.User.IsPlatformAdmin() && flow.GymId != httpContext.User.GetGymId())
+                return Results.Forbid();
+
+            try
+            {
+                var validationErrors = await handler.ReplaceScreensAsync(id, request.Screens, request.IsDynamic, ct);
+                return Results.Ok(new { validationErrors });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        });
+
+        // Raw JSON editing (an alternative to the structured screens editor above).
+        group.MapGet("/{id:guid}/json", async (Guid id, HttpContext httpContext, IWhatsAppFlowRepository repository, CancellationToken ct) =>
+        {
+            var flow = await repository.GetByIdAsync(id, ct);
+            if (flow is null) return Results.NotFound();
+            if (requireAuth && !httpContext.User.IsPlatformAdmin() && flow.GymId != httpContext.User.GetGymId())
+                return Results.Forbid();
+
+            return Results.Ok(new { flowJson = flow.FlowJson });
+        });
+
+        group.MapPut("/{id:guid}/json", async (
+            Guid id, UpdateFlowJsonRequest request, HttpContext httpContext, WhatsAppFlowHandler handler, IWhatsAppFlowRepository repository, CancellationToken ct) =>
+        {
+            var flow = await repository.GetByIdAsync(id, ct);
+            if (flow is null) return Results.NotFound();
+            if (requireAuth && !httpContext.User.IsPlatformAdmin() && flow.GymId != httpContext.User.GetGymId())
+                return Results.Forbid();
+
+            try
+            {
+                System.Text.Json.JsonDocument.Parse(request.FlowJson);
+            }
+            catch (System.Text.Json.JsonException ex)
+            {
+                return Results.BadRequest(new { error = $"Invalid JSON: {ex.Message}" });
+            }
+
+            try
+            {
+                var validationErrors = await handler.UpdateFlowJsonAsync(id, request.FlowJson, ct);
+                return Results.Ok(new { validationErrors });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
         });
 
         return app;

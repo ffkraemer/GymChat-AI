@@ -36,6 +36,7 @@ O GymChat AI é uma plataforma de relacionamento e fidelização para ginásios 
 ### Referência
 
 - Endpoints
+- Glossário
 
 ---
 
@@ -53,3 +54,4 @@ O GymChat AI é uma plataforma de relacionamento e fidelização para ginásios 
 - [Segurança](security.md)
 - [Guia de Deployment](deployment-guide.md)
 - [Endpoints](GymChatAI-endpoints.md)
+- [Glossário](concepts-glossary.md)

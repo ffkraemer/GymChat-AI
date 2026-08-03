@@ -4,10 +4,6 @@ using GymChatAI.Domain.Enums;
 
 namespace GymChatAI.Application.Flows;
 
-/// <summary>
-/// Orchestrates a WhatsApp Flow's lifecycle: create a draft, upload/replace its Flow JSON,
-/// publish it, and sync its status back from Meta.
-/// </summary>
 public class WhatsAppFlowHandler
 {
     private readonly IWhatsAppFlowRepository _flowRepository;
@@ -23,9 +19,10 @@ public class WhatsAppFlowHandler
 
     /// <summary>
     /// Creates the flow on Meta's side and saves it locally in one step, since a Flow needs
-    /// a MetaFlowId before its JSON can be uploaded. Starts with a single placeholder screen
-    /// (Meta rejects an empty screens array) - use ReplaceScreensAsync afterwards, from the
-    /// Flow Designer, to actually define its questions.
+    /// a MetaFlowId before its JSON can be uploaded. Starts as a static (non-dynamic) flow
+    /// with a single placeholder screen (Meta rejects an empty screens array) - use
+    /// ReplaceScreensAsync afterwards, from the Flow Designer, to actually define its
+    /// questions and decide whether it needs to be marked dynamic.
     /// </summary>
     public async Task<WhatsAppFlow> CreateAsync(Guid gymId, string name, IReadOnlyList<string> categories, CancellationToken cancellationToken = default)
     {
@@ -42,7 +39,7 @@ public class WhatsAppFlowHandler
         placeholderScreen.AddComponent(FlowComponentType.Footer, "Fechar", footerAction: FlowFooterAction.Complete, footerButtonLabel: "Fechar");
         flow.ReplaceScreens([placeholderScreen]);
 
-        var compiledJson = FlowJsonCompiler.Compile(flow.Screens.ToList());
+        var compiledJson = FlowJsonCompiler.Compile(flow.Screens.ToList(), isDynamic: false);
         flow.UpdateFlowJson(compiledJson);
 
         var createResult = await _managementClient.CreateFlowAsync(gym.WhatsAppBusinessAccountId, name, categories, cancellationToken);
@@ -57,12 +54,12 @@ public class WhatsAppFlowHandler
 
     /// <summary>
     /// Replaces the whole screen graph - this is how the Flow Designer saves: it always
-    /// sends the complete set of screens/components, not incremental diffs. Compiles the
-    /// new graph to Meta's Flow JSON and uploads it, so what's on Meta's side always matches
-    /// what the Designer shows.
+    /// sends the complete set of screens/components, not incremental diffs. Also updates
+    /// whether the flow is marked Dynamic (a purely static flow never declares
+    /// "data_api_version", so it never needs an endpoint configured at all).
     /// </summary>
     public async Task<IReadOnlyList<WhatsAppFlowValidationError>> ReplaceScreensAsync(
-        Guid flowId, IReadOnlyList<ScreenDefinition> screenDefinitions, CancellationToken cancellationToken = default)
+        Guid flowId, IReadOnlyList<ScreenDefinition> screenDefinitions, bool isDynamic, CancellationToken cancellationToken = default)
     {
         var flow = await _flowRepository.GetByIdAsync(flowId, cancellationToken)
             ?? throw new InvalidOperationException($"Flow {flowId} not found.");
@@ -90,13 +87,126 @@ public class WhatsAppFlowHandler
         }
 
         flow.ReplaceScreens(screens);
-        var compiledJson = FlowJsonCompiler.Compile(flow.Screens.ToList());
+        flow.SetDynamic(isDynamic);
+        var compiledJson = FlowJsonCompiler.Compile(flow.Screens.ToList(), isDynamic);
 
         var result = await _managementClient.UpdateFlowJsonAsync(flow.MetaFlowId, compiledJson, cancellationToken);
         flow.UpdateFlowJson(compiledJson);
         await _flowRepository.UpdateAsync(flow, cancellationToken);
 
         return result.ValidationErrors;
+    }
+
+    /// <summary>
+    /// Uploads a hand-edited/uploaded raw Flow JSON (the JSON editing mode) as-is to Meta,
+    /// and stores it verbatim - this is the source of truth sent to Meta, never
+    /// recompiled/altered. Also attempts to parse it into the structured Screens model (via
+    /// FlowJsonParser), on a best-effort basis, so switching to "Desenho" mode afterwards
+    /// shows something sensible to keep editing, instead of being stuck on whatever
+    /// structured screens existed before. A parse failure here never blocks the raw JSON
+    /// save itself - it's a convenience, not a requirement.
+    /// </summary>
+    public async Task<IReadOnlyList<WhatsAppFlowValidationError>> UpdateFlowJsonAsync(Guid flowId, string flowJson, CancellationToken cancellationToken = default)
+    {
+        var flow = await _flowRepository.GetByIdAsync(flowId, cancellationToken)
+            ?? throw new InvalidOperationException($"Flow {flowId} not found.");
+
+        if (flow.MetaFlowId is null)
+            throw new InvalidOperationException("This flow hasn't been created on Meta's side yet.");
+
+        var result = await _managementClient.UpdateFlowJsonAsync(flow.MetaFlowId, flowJson, cancellationToken);
+        flow.UpdateFlowJson(flowJson);
+
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(flowJson);
+            flow.SetDynamic(doc.RootElement.TryGetProperty("data_api_version", out _));
+        }
+        catch
+        {
+            // Already validated as parseable JSON by the endpoint before calling this - if
+            // this still somehow fails, just leave IsDynamic as it was.
+        }
+
+        try
+        {
+            var parsedScreens = FlowJsonParser.Parse(flowJson);
+            if (parsedScreens.Count > 0)
+            {
+                var screens = new List<FlowScreen>();
+                for (var i = 0; i < parsedScreens.Count; i++)
+                {
+                    var definition = parsedScreens[i];
+                    var screen = new FlowScreen(flow.Id, definition.ScreenId, definition.Title, order: i);
+
+                    foreach (var component in definition.Components)
+                    {
+                        screen.AddComponent(
+                            component.Type, component.Label, component.VariableName, component.Required,
+                            component.OptionsSource, component.StaticOptionsJson,
+                            component.FooterAction, component.FooterNextScreenId, component.FooterButtonLabel);
+                    }
+
+                    screens.Add(screen);
+                }
+
+                flow.ReplaceScreens(screens);
+            }
+        }
+        catch
+        {
+            // Best-effort only - an unparseable JSON (e.g. hand-written in a shape our
+            // parser doesn't recognize) just means Design mode won't reflect it. The raw
+            // JSON save above already succeeded regardless.
+        }
+
+        await _flowRepository.UpdateAsync(flow, cancellationToken);
+
+        return result.ValidationErrors;
+    }
+
+    public async Task PublishAsync(Guid flowId, CancellationToken cancellationToken = default)
+    {
+        var flow = await _flowRepository.GetByIdAsync(flowId, cancellationToken)
+            ?? throw new InvalidOperationException($"Flow {flowId} not found.");
+
+        if (flow.MetaFlowId is null)
+            throw new InvalidOperationException("This flow hasn't been created on Meta's side yet.");
+
+        // A dynamic flow is meaningless without somewhere for Meta to fetch live data from -
+        // catch this here too, not just client-side, since the endpoint is set via a
+        // separate call that could be skipped.
+        if (flow.IsDynamic && string.IsNullOrWhiteSpace(flow.EndpointUri))
+            throw new InvalidOperationException("This flow is marked as Dynamic and needs a Data Exchange endpoint URL set before it can be published.");
+
+        var (published, errorMessage) = await _managementClient.PublishFlowAsync(flow.MetaFlowId, cancellationToken);
+        if (!published)
+            throw new InvalidOperationException($"Meta rejected the publish request: {errorMessage}");
+
+        flow.MarkPublished();
+        await _flowRepository.UpdateAsync(flow, cancellationToken);
+    }
+
+    /// <summary>
+    /// Tells Meta where our Data Exchange endpoint lives for this Flow, and remembers it
+    /// locally (so the Portal can show what's already configured instead of an empty field).
+    /// </summary>
+    public async Task<bool> SetFlowEndpointAsync(Guid flowId, string endpointUri, CancellationToken cancellationToken = default)
+    {
+        var flow = await _flowRepository.GetByIdAsync(flowId, cancellationToken)
+            ?? throw new InvalidOperationException($"Flow {flowId} not found.");
+
+        if (flow.MetaFlowId is null)
+            throw new InvalidOperationException("This flow hasn't been created on Meta's side yet.");
+
+        var success = await _managementClient.SetFlowEndpointAsync(flow.MetaFlowId, endpointUri, cancellationToken);
+        if (success)
+        {
+            flow.SetEndpointUri(endpointUri);
+            await _flowRepository.UpdateAsync(flow, cancellationToken);
+        }
+
+        return success;
     }
 
     /// <summary>
@@ -118,8 +228,8 @@ public class WhatsAppFlowHandler
 
     /// <summary>
     /// Deletes a draft flow, on Meta's side first (unlike draft templates, a Flow already
-    /// exists on Meta as soon as it's created locally - CreateAsync above calls CreateFlowAsync
-    /// immediately) and then locally. Published flows can't be deleted at all - only deprecated.
+    /// exists on Meta as soon as it's created locally) and then locally. Published flows
+    /// can't be deleted at all - only deprecated.
     /// </summary>
     public async Task DeleteDraftAsync(Guid flowId, CancellationToken cancellationToken = default)
     {
@@ -137,55 +247,6 @@ public class WhatsAppFlowHandler
         }
 
         await _flowRepository.DeleteAsync(flowId, cancellationToken);
-    }
-
-    public async Task<IReadOnlyList<WhatsAppFlowValidationError>> UpdateFlowJsonAsync(Guid flowId, string flowJson, CancellationToken cancellationToken = default)
-    {
-        var flow = await _flowRepository.GetByIdAsync(flowId, cancellationToken)
-            ?? throw new InvalidOperationException($"Flow {flowId} not found.");
-
-        if (flow.MetaFlowId is null)
-            throw new InvalidOperationException("This flow hasn't been created on Meta's side yet.");
-
-        var result = await _managementClient.UpdateFlowJsonAsync(flow.MetaFlowId, flowJson, cancellationToken);
-        flow.UpdateFlowJson(flowJson);
-        await _flowRepository.UpdateAsync(flow, cancellationToken);
-
-        return result.ValidationErrors;
-    }
-
-    public async Task PublishAsync(Guid flowId, CancellationToken cancellationToken = default)
-    {
-        var flow = await _flowRepository.GetByIdAsync(flowId, cancellationToken)
-            ?? throw new InvalidOperationException($"Flow {flowId} not found.");
-
-        if (flow.MetaFlowId is null)
-            throw new InvalidOperationException("This flow hasn't been created on Meta's side yet.");
-
-        var (published, errorMessage) = await _managementClient.PublishFlowAsync(flow.MetaFlowId, cancellationToken);
-        if (!published)
-            throw new InvalidOperationException($"Meta rejected the publish request: {errorMessage}");
-
-        flow.MarkPublished();
-        await _flowRepository.UpdateAsync(flow, cancellationToken);
-    }
-
-    /// <summary>
-    /// Tells Meta where our Data Exchange endpoint lives, for this Flow. Needed because our
-    /// preferences form declares dynamic data (data_api_version) - Meta refuses to publish a
-    /// dynamic Flow without a reachable endpoint configured. Separate, explicit step (rather
-    /// than baked into CreateAsync) since the URL depends on the current ngrok tunnel in
-    /// development, and changes independently of the Flow's own lifecycle.
-    /// </summary>
-    public async Task<bool> SetFlowEndpointAsync(Guid flowId, string endpointUri, CancellationToken cancellationToken = default)
-    {
-        var flow = await _flowRepository.GetByIdAsync(flowId, cancellationToken)
-            ?? throw new InvalidOperationException($"Flow {flowId} not found.");
-
-        if (flow.MetaFlowId is null)
-            throw new InvalidOperationException("This flow hasn't been created on Meta's side yet.");
-
-        return await _managementClient.SetFlowEndpointAsync(flow.MetaFlowId, endpointUri, cancellationToken);
     }
 
     public async Task RefreshStatusAsync(Guid flowId, CancellationToken cancellationToken = default)
@@ -212,13 +273,7 @@ public class WhatsAppFlowHandler
         }
     }
 
-    /// <summary>
-    /// One-time per-phone-number setup: registers our RSA public key so Meta can encrypt
-    /// Data Exchange requests to us. Unlike almost every other Flow/Template endpoint (which
-    /// are scoped to the WABA), this specific one is scoped to the phone number id - Meta's
-    /// own documentation and examples confirm the path is
-    /// /{phone-number-id}/whatsapp_business_encryption, not /{waba-id}/...
-    /// </summary>
+    /// <summary>One-time per-phone-number setup: registers our RSA public key so Meta can encrypt Data Exchange requests to us.</summary>
     public async Task<bool> RegisterEncryptionKeyAsync(Guid gymId, string publicKeyPem, CancellationToken cancellationToken = default)
     {
         var gym = await _gymRepository.GetByIdAsync(gymId, cancellationToken)
