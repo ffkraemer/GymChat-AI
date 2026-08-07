@@ -35,6 +35,14 @@ public class FlowComponent : Entity
     /// <summary>Ordered list of {"id":"...","title":"..."} objects, serialized as JSON - only used when OptionsSource is Static.</summary>
     public string? StaticOptionsJson { get; private set; }
 
+    /// <summary>
+    /// The reusable OptionList backing this component's options - only set when OptionsSource
+    /// is CustomList. The list is resolved at compile time (static flows) or live by the Data
+    /// Exchange endpoint (dynamic flows), exactly like the other dynamic sources. A gym can't
+    /// delete or deactivate a list while any component still references it here.
+    /// </summary>
+    public Guid? OptionListId { get; private set; }
+
     /// <summary>Only meaningful for Footer: what tapping the button does.</summary>
     public FlowFooterAction? FooterAction { get; private set; }
 
@@ -50,7 +58,8 @@ public class FlowComponent : Entity
         Guid flowScreenId, FlowComponentType type, int order, string label,
         string? variableName = null, bool required = false,
         FlowDesignerOptionsSource? optionsSource = null, string? staticOptionsJson = null,
-        FlowFooterAction? footerAction = null, string? footerNextScreenId = null, string? footerButtonLabel = null)
+        FlowFooterAction? footerAction = null, string? footerNextScreenId = null, string? footerButtonLabel = null,
+        Guid? optionListId = null)
     {
         if (string.IsNullOrWhiteSpace(label))
             throw new ArgumentException("Component label/text is required.", nameof(label));
@@ -63,6 +72,7 @@ public class FlowComponent : Entity
         Required = required;
         OptionsSource = optionsSource;
         StaticOptionsJson = staticOptionsJson;
+        OptionListId = optionListId;
         FooterAction = footerAction;
         FooterNextScreenId = footerNextScreenId;
         FooterButtonLabel = footerButtonLabel;

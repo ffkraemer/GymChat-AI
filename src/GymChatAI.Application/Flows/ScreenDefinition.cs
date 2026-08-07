@@ -12,7 +12,8 @@ public record ComponentDefinition(
     string? StaticOptionsJson = null,
     FlowFooterAction? FooterAction = null,
     string? FooterNextScreenId = null,
-    string? FooterButtonLabel = null);
+    string? FooterButtonLabel = null,
+    Guid? OptionListId = null);
 
 /// <summary>Wire-format for one screen, as sent by the Flow Designer frontend.</summary>
-public record ScreenDefinition(string ScreenId, string Title, IReadOnlyList<ComponentDefinition> Components);
+public record ScreenDefinition(string ScreenId, string Title, IReadOnlyList<ComponentDefinition> Components, Guid? OptionListId = null);

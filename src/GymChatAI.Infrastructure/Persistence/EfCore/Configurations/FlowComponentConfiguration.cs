@@ -20,5 +20,13 @@ public class FlowComponentConfiguration : IEntityTypeConfiguration<FlowComponent
         builder.Property(c => c.FooterAction).HasConversion<string>().HasMaxLength(20);
         builder.Property(c => c.FooterNextScreenId).HasMaxLength(100);
         builder.Property(c => c.FooterButtonLabel).HasMaxLength(100);
+        builder.Property(c => c.OptionListId);
+
+        // FK opcional para OptionList, SEM cascade (a proteção é feita na Application):
+        builder.HasOne<OptionList>()
+            .WithMany()
+            .HasForeignKey(c => c.OptionListId)
+            .OnDelete(DeleteBehavior.NoAction)
+            .IsRequired(false);
     }
 }

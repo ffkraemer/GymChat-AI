@@ -25,13 +25,16 @@ public class WhatsAppFlowDataExchangeHandler
     private readonly IWhatsAppFlowTokenStore _tokenStore;
     private readonly IWhatsAppFlowRepository _flowRepository;
     private readonly IClassTypeRepository _classTypeRepository;
+    private readonly IOptionListRepository _optionListRepository;
 
     public WhatsAppFlowDataExchangeHandler(
-        IWhatsAppFlowTokenStore tokenStore, IWhatsAppFlowRepository flowRepository, IClassTypeRepository classTypeRepository)
+        IWhatsAppFlowTokenStore tokenStore, IWhatsAppFlowRepository flowRepository,
+        IClassTypeRepository classTypeRepository, IOptionListRepository optionListRepository)
     {
         _tokenStore = tokenStore;
         _flowRepository = flowRepository;
         _classTypeRepository = classTypeRepository;
+        _optionListRepository = optionListRepository;
     }
 
     public async Task<string> HandleAsync(string decryptedRequestJson, CancellationToken cancellationToken = default)
@@ -73,7 +76,6 @@ public class WhatsAppFlowDataExchangeHandler
         if (nextScreen is null)
             return JsonSerializer.Serialize(new { data = new { acknowledged = true } });
 
-        // Everything the previous screen forwarded (all answers so far, per FlowJsonCompiler's payload wiring) - pass it straight through.
         var mergedData = new Dictionary<string, object?>();
         if (root.TryGetProperty("data", out var dataEl) && dataEl.ValueKind == JsonValueKind.Object)
         {
@@ -81,7 +83,6 @@ public class WhatsAppFlowDataExchangeHandler
                 mergedData[prop.Name] = JsonSerializer.Deserialize<object?>(prop.Value.GetRawText());
         }
 
-        // Add whatever dynamic option data the NEXT screen itself needs.
         var nextDynamicData = await BuildDynamicOptionsAsync(nextScreen, context.GymId, cancellationToken);
         foreach (var (key, value) in nextDynamicData)
             mergedData[key] = value;
@@ -89,7 +90,7 @@ public class WhatsAppFlowDataExchangeHandler
         return JsonSerializer.Serialize(new { screen = nextScreen.ScreenId, data = mergedData });
     }
 
-    /// <summary>Resolves every dynamic-source option component on a screen (e.g. GymClassTypes, DaysOfWeek, TimeWindows) into an actual "{name}_options" data property.</summary>
+    /// <summary>Resolves every dynamic-source option component on a screen (GymClassTypes, DaysOfWeek, TimeWindows, or a CustomList) into an actual "{name}_options" data property.</summary>
     private async Task<Dictionary<string, object>> BuildDynamicOptionsAsync(FlowScreen screen, Guid gymId, CancellationToken cancellationToken)
     {
         var result = new Dictionary<string, object>();
@@ -101,6 +102,7 @@ public class WhatsAppFlowDataExchangeHandler
                 FlowDesignerOptionsSource.GymClassTypes => await BuildClassTypeOptionsAsync(gymId, cancellationToken),
                 FlowDesignerOptionsSource.DaysOfWeek => BuildDaysOfWeekOptions(),
                 FlowDesignerOptionsSource.TimeWindows => BuildTimeWindowOptions(),
+                FlowDesignerOptionsSource.CustomList => await BuildCustomListOptionsAsync(component.OptionListId, cancellationToken),
                 _ => new List<object>()
             };
 
@@ -116,6 +118,17 @@ public class WhatsAppFlowDataExchangeHandler
         return classTypes.Select(c => (object)new { id = c.Id.ToString(), title = c.Name }).ToList();
     }
 
+    /// <summary>Resolves a CustomList (by its OptionListId) into live option data. Inactive/missing list -> empty, so a Flow referencing a since-removed list simply shows no options rather than erroring.</summary>
+    private async Task<List<object>> BuildCustomListOptionsAsync(Guid? optionListId, CancellationToken cancellationToken)
+    {
+        if (optionListId is not Guid id) return new List<object>();
+
+        var list = await _optionListRepository.GetByIdAsync(id, cancellationToken);
+        if (list is null || !list.IsActive) return new List<object>();
+
+        return list.Items.Select(i => (object)new { id = i.Value, title = i.Label }).ToList();
+    }
+
     private static List<object> BuildDaysOfWeekOptions() =>
     [
         new { id = ((int)DayOfWeek.Monday).ToString(), title = "Segunda-feira" },
@@ -127,7 +140,6 @@ public class WhatsAppFlowDataExchangeHandler
         new { id = ((int)DayOfWeek.Sunday).ToString(), title = "Domingo" },
     ];
 
-    /// <summary>Morning/Afternoon/Evening - matches NotificationTimeWindow's values (morning/afternoon/evening), so a Flow submission maps directly onto WhatsAppFlowCompletionHandler's existing parsing.</summary>
     private static List<object> BuildTimeWindowOptions() =>
     [
         new { id = "morning", title = "Manhã" },
@@ -137,5 +149,6 @@ public class WhatsAppFlowDataExchangeHandler
 
     private static bool IsDynamicOptionsComponent(FlowComponent component) =>
         component.Type is FlowComponentType.Dropdown or FlowComponentType.CheckboxGroup or FlowComponentType.RadioButtonsGroup
-        && component.OptionsSource is FlowDesignerOptionsSource.GymClassTypes or FlowDesignerOptionsSource.DaysOfWeek or FlowDesignerOptionsSource.TimeWindows;
+        && component.OptionsSource is FlowDesignerOptionsSource.GymClassTypes or FlowDesignerOptionsSource.DaysOfWeek
+            or FlowDesignerOptionsSource.TimeWindows or FlowDesignerOptionsSource.CustomList;
 }

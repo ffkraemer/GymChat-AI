@@ -3,6 +3,7 @@ using GymChatAI.Application.Compliance;
 using GymChatAI.Application.Flows;
 using GymChatAI.Application.Loyalty;
 using GymChatAI.Application.Messaging;
+using GymChatAI.Application.OptionLists;
 using GymChatAI.Application.Templates;
 using GymChatAI.Infrastructure.AI;
 using GymChatAI.Infrastructure.BackgroundServices;
@@ -12,6 +13,7 @@ using GymChatAI.Infrastructure.Options;
 using GymChatAI.Infrastructure.Persistence;
 using GymChatAI.Infrastructure.Persistence.EfCore;
 using GymChatAI.Infrastructure.Persistence.EfCore.Repositories;
+using GymChatAI.Infrastructure.Persistence.InMemory.Repositories;
 using GymChatAI.Infrastructure.WhatsApp;
 using GymChatAI.Infrastructure.WhatsApp.Flows;
 using Microsoft.AspNetCore.Identity;
@@ -78,6 +80,7 @@ public static class ServiceCollectionExtensions
             services.AddScoped<IWhatsAppDeliveryFailureRepository, EfWhatsAppDeliveryFailureRepository>();
             services.AddScoped<IWhatsAppMessageTemplateRepository, EfWhatsAppMessageTemplateRepository>();
             services.AddScoped<IWhatsAppFlowRepository, EfWhatsAppFlowRepository>();
+            services.AddScoped<IOptionListRepository, EfOptionListRepository>();
         }
         else
         {
@@ -103,6 +106,7 @@ public static class ServiceCollectionExtensions
             services.AddSingleton<IWhatsAppMessageTemplateRepository, InMemoryWhatsAppMessageTemplateRepository>();
             services.AddSingleton<InMemoryWhatsAppFlowStore>();
             services.AddSingleton<IWhatsAppFlowRepository, InMemoryWhatsAppFlowRepository>();
+            services.AddSingleton<IOptionListRepository, InMemoryOptionListRepository>();
         }
 
         services.AddScoped<LoyaltyEngineHandler>();
@@ -112,6 +116,7 @@ public static class ServiceCollectionExtensions
         services.AddHostedService<PendingAIReplyBackgroundService>();
 
         services.AddScoped<OnboardingFlowHandler>();
+        services.AddScoped<OptionListHandler>();
 
         return services;
     }

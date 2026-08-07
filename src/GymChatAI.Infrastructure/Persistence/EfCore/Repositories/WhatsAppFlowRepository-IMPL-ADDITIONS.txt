@@ -1,0 +1,51 @@
+// ============================================================================
+// ADICIONA a implementação correspondente às DUAS implementações do
+// IWhatsAppFlowRepository. Ajusta nomes de DbSet/coleções conforme o teu código.
+// ============================================================================
+
+
+// ---------------------------------------------------------------------------
+// EF Core (EfWhatsAppFlowRepository) - query direta por OptionListId através
+// das screens/components. Assume que o DbContext expõe navegações
+// Flow -> Screens -> Components (como o modelo indica).
+// ---------------------------------------------------------------------------
+
+public async Task<IReadOnlyList<string>> GetFlowNamesUsingOptionListAsync(Guid optionListId, CancellationToken cancellationToken = default)
+{
+    // A flow "uses" the list if any component on any of its screens references it.
+    return await _db.Set<WhatsAppFlow>()
+        .Where(f => f.Screens.Any(s => s.Components.Any(c => c.OptionListId == optionListId)))
+        .Select(f => f.Name)
+        .ToListAsync(cancellationToken);
+}
+
+// Se o teu DbContext não tiver as navegações mapeadas para permitir esta query
+// diretamente, uma alternativa é ir pela tabela dos componentes:
+//
+// public async Task<IReadOnlyList<string>> GetFlowNamesUsingOptionListAsync(Guid optionListId, CancellationToken cancellationToken = default)
+// {
+//     var flowIds = await _db.Set<FlowComponent>()
+//         .Where(c => c.OptionListId == optionListId)
+//         .Join(_db.Set<FlowScreen>(), c => c.FlowScreenId, s => s.Id, (c, s) => s.WhatsAppFlowId)
+//         .Distinct()
+//         .ToListAsync(cancellationToken);
+//     return await _db.Set<WhatsAppFlow>()
+//         .Where(f => flowIds.Contains(f.Id))
+//         .Select(f => f.Name)
+//         .ToListAsync(cancellationToken);
+// }
+
+
+// ---------------------------------------------------------------------------
+// In-memory (InMemoryWhatsAppFlowRepository) - percorre a store em memória.
+// Ajusta "_store"/"_flows" para o nome real da tua coleção interna.
+// ---------------------------------------------------------------------------
+
+public Task<IReadOnlyList<string>> GetFlowNamesUsingOptionListAsync(Guid optionListId, CancellationToken cancellationToken = default)
+{
+    var names = _store.Values
+        .Where(f => f.Screens.Any(s => s.Components.Any(c => c.OptionListId == optionListId)))
+        .Select(f => f.Name)
+        .ToList();
+    return Task.FromResult<IReadOnlyList<string>>(names);
+}

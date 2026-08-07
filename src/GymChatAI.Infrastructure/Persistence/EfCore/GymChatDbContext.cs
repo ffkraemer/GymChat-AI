@@ -17,26 +17,49 @@ public class GymChatDbContext : IdentityDbContext<ApplicationUser, IdentityRole<
     {
     }
 
-    public DbSet<Gym> Gyms => Set<Gym>();
-    public DbSet<Member> Members => Set<Member>();
-    public DbSet<Lead> Leads => Set<Lead>();
-    public DbSet<Conversation> Conversations => Set<Conversation>();
-    public DbSet<Message> Messages => Set<Message>();
-    public DbSet<Faq> Faqs => Set<Faq>();
-    public DbSet<Plan> Plans => Set<Plan>();
-    public DbSet<Promotion> Promotions => Set<Promotion>();
-    public DbSet<Campaign> Campaigns => Set<Campaign>();
     public DbSet<CampaignMessage> CampaignMessages => Set<CampaignMessage>();
-    public DbSet<PendingAIReply> PendingAIReplies => Set<PendingAIReply>();
+
+    public DbSet<Campaign> Campaigns => Set<Campaign>();
+
     public DbSet<ClassType> ClassTypes => Set<ClassType>();
-    public DbSet<NotificationPreference> NotificationPreferences => Set<NotificationPreference>();
-    public DbSet<NotificationTimeSlot> NotificationTimeSlots => Set<NotificationTimeSlot>();
-    public DbSet<WhatsAppApiError> WhatsAppApiErrors => Set<WhatsAppApiError>();
-    public DbSet<WhatsAppDeliveryFailure> WhatsAppDeliveryFailures => Set<WhatsAppDeliveryFailure>();
-    public DbSet<WhatsAppMessageTemplate> WhatsAppMessageTemplates => Set<WhatsAppMessageTemplate>();
-    public DbSet<WhatsAppFlow> WhatsAppFlows => Set<WhatsAppFlow>();
-    public DbSet<FlowScreen> FlowScreens => Set<FlowScreen>();
+
+    public DbSet<Conversation> Conversations => Set<Conversation>();
+
+    public DbSet<Faq> Faqs => Set<Faq>();
+
     public DbSet<FlowComponent> FlowComponents => Set<FlowComponent>();
+
+    public DbSet<FlowScreen> FlowScreens => Set<FlowScreen>();
+
+    public DbSet<Gym> Gyms => Set<Gym>();
+
+    public DbSet<Lead> Leads => Set<Lead>();
+
+    public DbSet<Member> Members => Set<Member>();
+
+    public DbSet<Message> Messages => Set<Message>();
+
+    public DbSet<NotificationPreference> NotificationPreferences => Set<NotificationPreference>();
+
+    public DbSet<NotificationTimeSlot> NotificationTimeSlots => Set<NotificationTimeSlot>();
+
+    public DbSet<OptionListItem> OptionListItems => Set<OptionListItem>();
+
+    public DbSet<OptionList> OptionLists => Set<OptionList>();
+
+    public DbSet<PendingAIReply> PendingAIReplies => Set<PendingAIReply>();
+
+    public DbSet<Plan> Plans => Set<Plan>();
+
+    public DbSet<Promotion> Promotions => Set<Promotion>();
+
+    public DbSet<WhatsAppApiError> WhatsAppApiErrors => Set<WhatsAppApiError>();
+
+    public DbSet<WhatsAppDeliveryFailure> WhatsAppDeliveryFailures => Set<WhatsAppDeliveryFailure>();
+
+    public DbSet<WhatsAppFlow> WhatsAppFlows => Set<WhatsAppFlow>();
+
+    public DbSet<WhatsAppMessageTemplate> WhatsAppMessageTemplates => Set<WhatsAppMessageTemplate>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

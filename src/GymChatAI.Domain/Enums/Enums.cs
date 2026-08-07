@@ -189,5 +189,7 @@ public enum FlowDesignerOptionsSource
     DaysOfWeek = 3,
 
     /// <summary>Morning / Afternoon / Evening.</summary>
-    TimeWindows = 4
+    TimeWindows = 4,
+
+    CustomList = 5,
 }

@@ -94,6 +94,7 @@ app.MapComplianceEndpoints(usingSqlServer);
 app.MapTemplateEndpoints(usingSqlServer);
 app.MapFlowEndpoints(usingSqlServer);
 app.MapCredentialHealthEndpoints();
+app.MapOptionListEndpoints(usingSqlServer);
 
 app.Run();
 

@@ -15,20 +15,27 @@ namespace GymChatAI.Application.Flows;
 ///
 /// isDynamic controls whether "data_api_version" is emitted at all - that property is what
 /// tells Meta this flow requires a Data Exchange endpoint. A purely static flow (fixed
-/// questions/options only, no GymClassTypes/DaysOfWeek sources) should never declare it, so
-/// it never needs an endpoint configured.
+/// questions/options only, no dynamic sources) should never declare it, so it never needs an
+/// endpoint configured.
+///
+/// customListItems: the items of every CustomList referenced by a component, pre-resolved by
+/// the caller (WhatsAppFlowHandler) and keyed by OptionListId. The compiler stays static and
+/// DB-free - it just looks options up in this dictionary when baking a static CustomList
+/// source into the JSON. For dynamic flows the endpoint resolves them live instead, so an
+/// empty/absent entry here is only a problem for static flows.
 /// </summary>
 public static class FlowJsonCompiler
 {
-    public static string Compile(IReadOnlyList<FlowScreen> screens, bool isDynamic)
+    public static string Compile(
+        IReadOnlyList<FlowScreen> screens,
+        bool isDynamic,
+        IReadOnlyDictionary<Guid, IReadOnlyList<(string Id, string Title)>>? customListItems = null)
     {
         var orderedScreens = screens.OrderBy(s => s.Order).ToList();
 
         var routingModel = new Dictionary<string, List<string>>();
         var screenJsons = new List<Dictionary<string, object>>();
 
-        // Variables each screen owns (its own input components) - used to compute both what
-        // gets carried forward into later screens, and this screen's own footer payload.
         var variablesByScreen = orderedScreens.ToDictionary(
             s => s.ScreenId,
             s => s.Components.Where(IsInputComponent).Select(c => c.VariableName!).ToList());
@@ -45,9 +52,6 @@ public static class FlowJsonCompiler
                 ? [footer.FooterNextScreenId]
                 : [];
 
-            // "data" schema this screen expects to receive - everything forwarded from earlier
-            // screens, plus (only for dynamic flows) a generated "_options" property for each
-            // of its own dynamic-source input components (populated by our Data Exchange endpoint).
             var dataProperties = new Dictionary<string, object>();
             foreach (var carried in cumulativeBeforeScreen)
                 dataProperties[carried] = new { type = "string" };
@@ -65,17 +69,15 @@ public static class FlowJsonCompiler
                 }
             }
 
-            // Every variable collected up to and including this screen - referenced via
-            // {form.X} if it's one of THIS screen's own inputs, or {data.X} if it arrived
-            // already forwarded from an earlier screen. This is what a Footer (whether
-            // navigating onward or completing the flow) sends along.
             var footerPayload = new Dictionary<string, object>();
             foreach (var name in cumulativeBeforeScreen) footerPayload[name] = $"${{data.{name}}}";
             foreach (var name in ownVariables) footerPayload[name] = $"${{form.{name}}}";
 
             var children = new List<object>();
             foreach (var component in screen.Components.OrderBy(c => c.Order))
-                children.Add(component.Type == FlowComponentType.Footer ? CompileFooter(component, footerPayload) : CompileComponent(component, isDynamic));
+                children.Add(component.Type == FlowComponentType.Footer
+                    ? CompileFooter(component, footerPayload)
+                    : CompileComponent(component, isDynamic, customListItems));
 
             screenJsons.Add(new Dictionary<string, object>
             {
@@ -98,14 +100,14 @@ public static class FlowJsonCompiler
             ["screens"] = screenJsons
         };
 
-        // Only declared when the flow actually needs an endpoint - this is the property
-        // Meta reads to decide whether it should call our Data Exchange endpoint at all.
         if (isDynamic) root["data_api_version"] = "3.0";
 
         return JsonSerializer.Serialize(root, new JsonSerializerOptions { WriteIndented = true });
     }
 
-    private static object CompileComponent(FlowComponent component, bool isDynamic) => component.Type switch
+    private static object CompileComponent(
+        FlowComponent component, bool isDynamic,
+        IReadOnlyDictionary<Guid, IReadOnlyList<(string Id, string Title)>>? customListItems) => component.Type switch
     {
         FlowComponentType.TextHeading => new Dictionary<string, object> { ["type"] = "TextHeading", ["text"] = component.Label },
         FlowComponentType.TextBody => new Dictionary<string, object> { ["type"] = "TextBody", ["text"] = component.Label },
@@ -124,23 +126,34 @@ public static class FlowJsonCompiler
             ["name"] = component.VariableName!,
             ["label"] = component.Label,
             ["required"] = component.Required,
-            ["data-source"] = BuildDataSource(component, isDynamic)
+            ["data-source"] = BuildDataSource(component, isDynamic, customListItems)
         },
 
         _ => throw new InvalidOperationException($"CompileComponent doesn't handle {component.Type} - Footer is compiled separately.")
     };
 
-    private static object BuildDataSource(FlowComponent component, bool isDynamic)
+    private static object BuildDataSource(
+        FlowComponent component, bool isDynamic,
+        IReadOnlyDictionary<Guid, IReadOnlyList<(string Id, string Title)>>? customListItems)
     {
+        // Static flow (or an explicitly Static source): bake a literal array into the JSON.
         if (component.OptionsSource == FlowDesignerOptionsSource.Static || !isDynamic)
         {
-            // Falls back to whatever static options exist even if a dynamic source was picked
-            // on a non-dynamic flow - a misconfiguration, but this avoids emitting a reference
-            // to a "_options" data property that would never actually get populated.
+            // A CustomList on a static flow: emit the pre-resolved list items as a literal array.
+            if (component.OptionsSource == FlowDesignerOptionsSource.CustomList
+                && component.OptionListId is Guid listId
+                && customListItems is not null
+                && customListItems.TryGetValue(listId, out var items))
+            {
+                return items.Select(i => new Dictionary<string, string> { ["id"] = i.Id, ["title"] = i.Title }).ToList();
+            }
+
+            // Static source: whatever literal options were authored.
             return JsonSerializer.Deserialize<List<Dictionary<string, string>>>(component.StaticOptionsJson ?? "[]") ?? [];
         }
 
-        // Dynamic source: reference the "_options" data property populated by our Data Exchange endpoint.
+        // Dynamic source (including a dynamic CustomList): reference the "_options" data
+        // property that our Data Exchange endpoint populates live at runtime.
         return $"${{data.{component.VariableName}_options}}";
     }
 
